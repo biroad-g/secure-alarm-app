@@ -61,7 +61,7 @@ class AlarmStateModel {
   const AlarmStateModel({
     this.status = AlarmStatus.standby,
     this.level = AlarmLevel.none,
-    this.sensitivity = 1.5,
+    this.sensitivity = 1.0,
     this.isProtectionEnabled = false,
     this.currentAcceleration = 0.0,
   });

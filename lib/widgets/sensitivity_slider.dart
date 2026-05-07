@@ -9,6 +9,14 @@ class SensitivitySlider extends StatelessWidget {
     required this.onChanged,
   });
 
+  // スライダーの内部値は 0.5(高感度)〜3.0(低感度)
+  // 表示は「左=低感度 / 右=高感度」に見せるため、
+  // 表示値 = max + min - value で反転する
+  static const double _min = 0.5;
+  static const double _max = 3.0;
+
+  double get _displayValue => _max + _min - value; // 反転した表示用値
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -69,23 +77,29 @@ class SensitivitySlider extends StatelessWidget {
               trackHeight: 6,
             ),
             child: Slider(
-              value: value,
-              min: 0.5,
-              max: 3.0,
+              // 表示値（反転済み）でスライダーを描画
+              value: _displayValue,
+              min: _min,
+              max: _max,
               divisions: 25,
-              onChanged: onChanged,
+              // ユーザーが動かしたら反転して実際の感度値に変換して返す
+              onChanged: (displayVal) {
+                final actualVal = _max + _min - displayVal;
+                onChanged(actualVal);
+              },
             ),
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              // 左=低感度、右=高感度
               Text(
-                '高感度',
+                '低感度',
                 style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.6), fontSize: 11),
               ),
               Text(
-                '低感度',
+                '高感度',
                 style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.6), fontSize: 11),
               ),
@@ -93,7 +107,7 @@ class SensitivitySlider extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '閾値: ${value.toStringAsFixed(1)} m/s²  ─  小さい値ほど敏感に反応します',
+            '閾値: ${value.toStringAsFixed(1)} m/s²  ─  右にするほど敏感に反応します',
             style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.55), fontSize: 11),
           ),
@@ -103,10 +117,11 @@ class SensitivitySlider extends StatelessWidget {
   }
 
   String _sensitivityLabel(double v) {
-    if (v < 1.0) return '最高感度';
-    if (v < 1.5) return '高感度';
-    if (v < 2.0) return '標準';
-    if (v < 2.5) return '低感度';
+    // v が小さい = 高感度
+    if (v <= 0.8) return '最高感度';
+    if (v <= 1.3) return '高感度';
+    if (v <= 1.8) return '標準';
+    if (v <= 2.4) return '低感度';
     return '最低感度';
   }
 }

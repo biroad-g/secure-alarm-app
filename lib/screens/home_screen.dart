@@ -19,55 +19,82 @@ class HomeScreen extends StatelessWidget {
         final state = service.state;
         return Scaffold(
           body: Container(
+            width: double.infinity,
+            height: double.infinity,
             decoration: BoxDecoration(
               gradient: _buildGradient(state),
             ),
             child: SafeArea(
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 24.0, vertical: 16.0),
-                  child: Column(
-                    children: [
-                      _buildHeader(state),
-                      const SizedBox(height: 32),
-                      StatusDisplay(state: state),
-                      const SizedBox(height: 32),
-                      _buildShieldIcon(state),
-                      const SizedBox(height: 32),
-                      AlarmLevelIndicator(state: state),
-                      const SizedBox(height: 32),
-                      if (state.status == AlarmStatus.alarming)
-                        StopAlarmButton(onStop: () => service.stopAlarm()),
-                      if (state.status != AlarmStatus.alarming)
-                        ProtectionToggle(
-                          isEnabled: state.isProtectionEnabled,
-                          onChanged: (val) async {
-                            if (val) {
-                              await service.enableProtection();
-                            } else {
-                              await service.disableProtection();
-                            }
-                          },
-                        ),
-                      const SizedBox(height: 24),
-                      if (!state.isProtectionEnabled ||
-                          state.status == AlarmStatus.monitoring)
-                        SensitivitySlider(
-                          value: state.sensitivity,
-                          onChanged: service.setSensitivity,
-                        ),
-                      const SizedBox(height: 8),
-                      if (state.status != AlarmStatus.alarming)
-                        SoundTestPanel(service: service),
-                      const SizedBox(height: 24),
-                      _buildAccelerometerDisplay(state),
-                      const SizedBox(height: 24),
-                      _buildInfoCard(),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20.0, vertical: 12.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // ── ヘッダー ──
+                    _buildHeader(state),
+                    const SizedBox(height: 16),
+
+                    // ── ステータス表示 ──
+                    StatusDisplay(state: state),
+                    const SizedBox(height: 16),
+
+                    // ── シールドアイコン ──
+                    Center(child: _buildShieldIcon(state)),
+                    const SizedBox(height: 16),
+
+                    // ── アラームレベルインジケーター ──
+                    AlarmLevelIndicator(state: state),
+                    const SizedBox(height: 16),
+
+                    // ── アラーム停止ボタン（アラーム中のみ） ──
+                    if (state.status == AlarmStatus.alarming) ...[
+                      StopAlarmButton(
+                          onStop: () => service.stopAlarm()),
                       const SizedBox(height: 16),
                     ],
-                  ),
+
+                    // ── 盗難防止モード ON/OFF ──
+                    if (state.status != AlarmStatus.alarming) ...[
+                      ProtectionToggle(
+                        isEnabled: state.isProtectionEnabled,
+                        onChanged: (val) async {
+                          if (val) {
+                            await service.enableProtection();
+                          } else {
+                            await service.disableProtection();
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // ── 検知感度スライダー（待機中・監視中のみ） ──
+                    if (state.status != AlarmStatus.alarming) ...[
+                      SensitivitySlider(
+                        value: state.sensitivity,
+                        onChanged: service.setSensitivity,
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // ── 振動センサー表示（監視中・アラーム中） ──
+                    if (state.isProtectionEnabled) ...[
+                      _buildAccelerometerDisplay(state),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // ── テスト音パネル（待機中・監視中のみ） ──
+                    if (state.status != AlarmStatus.alarming) ...[
+                      SoundTestPanel(service: service),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // ── 使い方 ──
+                    _buildInfoCard(),
+                    const SizedBox(height: 20),
+                  ],
                 ),
               ),
             ),
@@ -79,25 +106,24 @@ class HomeScreen extends StatelessWidget {
 
   LinearGradient _buildGradient(AlarmStateModel state) {
     if (state.status == AlarmStatus.alarming) {
-      // アラーム中：レッドグラデーション
-      final intensity = state.level.index2 / 5.0;
+      final intensity = (state.level.index2 / 5.0).clamp(0.0, 1.0);
       return LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [
-          Color.lerp(const Color(0xFF8B0000), const Color(0xFFFF0000), intensity)!,
-          Color.lerp(const Color(0xFFFF4500), const Color(0xFFFF6B00), intensity)!,
+          Color.lerp(
+              const Color(0xFF8B0000), const Color(0xFFFF0000), intensity)!,
+          Color.lerp(
+              const Color(0xFFFF4500), const Color(0xFFFF6B00), intensity)!,
         ],
       );
     } else if (state.status == AlarmStatus.monitoring) {
-      // 監視中：パープルグラデーション（明るめ）
       return const LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [Color(0xFF6A1B9A), Color(0xFFE65100)],
       );
     } else {
-      // 待機中：落ち着いたパープルグラデーション
       return const LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
@@ -117,16 +143,16 @@ class HomeScreen extends StatelessWidget {
               'Secure Alarm',
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.95),
-                fontSize: 26,
+                fontSize: 24,
                 fontWeight: FontWeight.bold,
-                letterSpacing: 1.2,
+                letterSpacing: 1.0,
               ),
             ),
             Text(
               '盗難防止システム',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.75),
-                fontSize: 13,
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 12,
               ),
             ),
           ],
@@ -138,9 +164,11 @@ class HomeScreen extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(
-            state.isProtectionEnabled ? Icons.security : Icons.security_outlined,
+            state.isProtectionEnabled
+                ? Icons.security
+                : Icons.security_outlined,
             color: Colors.white,
-            size: 28,
+            size: 26,
           ),
         ),
       ],
@@ -159,8 +187,8 @@ class HomeScreen extends StatelessWidget {
         );
       },
       child: Container(
-        width: 160,
-        height: 160,
+        width: 130,
+        height: 130,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: Colors.white.withValues(alpha: 0.15),
@@ -178,7 +206,7 @@ class HomeScreen extends StatelessWidget {
         ),
         child: Icon(
           _getShieldIcon(state.status),
-          size: 90,
+          size: 72,
           color: Colors.white,
         ),
       ),
@@ -199,9 +227,8 @@ class HomeScreen extends StatelessWidget {
   }
 
   Widget _buildAccelerometerDisplay(AlarmStateModel state) {
-    if (!state.isProtectionEnabled) return const SizedBox.shrink();
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(16),
@@ -212,8 +239,9 @@ class HomeScreen extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.sensors, color: Colors.white.withValues(alpha: 0.8), size: 18),
-              const SizedBox(width: 8),
+              Icon(Icons.sensors,
+                  color: Colors.white.withValues(alpha: 0.8), size: 16),
+              const SizedBox(width: 6),
               Text(
                 '振動センサー',
                 style: TextStyle(
@@ -224,7 +252,7 @@ class HomeScreen extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
@@ -266,74 +294,69 @@ class HomeScreen extends StatelessWidget {
   Widget _buildMeterBar(double current, double threshold) {
     final ratio = (current / (threshold * 2)).clamp(0.0, 1.0);
     return SizedBox(
-      width: 40,
-      height: 80,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          Container(
-            width: 40,
-            height: 80,
+      width: 36,
+      height: 72,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          color: Colors.white.withValues(alpha: 0.1),
+        ),
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 100),
+            width: 36,
+            height: 72 * ratio,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(8),
-              color: Colors.white.withValues(alpha: 0.1),
-            ),
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 100),
-                width: 40,
-                height: 80 * ratio,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [
-                      Colors.greenAccent,
-                      ratio > 0.7 ? Colors.redAccent : Colors.orangeAccent,
-                    ],
-                  ),
-                ),
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: [
+                  Colors.greenAccent,
+                  ratio > 0.7 ? Colors.redAccent : Colors.orangeAccent,
+                ],
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildInfoCard() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Icon(Icons.info_outline,
-                  color: Colors.white.withValues(alpha: 0.8), size: 18),
-              const SizedBox(width: 8),
+                  color: Colors.white.withValues(alpha: 0.8), size: 16),
+              const SizedBox(width: 6),
               Text(
                 '使い方',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.9),
                   fontWeight: FontWeight.bold,
-                  fontSize: 14,
+                  fontSize: 13,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           _buildInfoRow(Icons.toggle_on_outlined, '盗難防止モードをONにして起動'),
-          _buildInfoRow(Icons.phone_android, 'スマートフォンを置いてその場を離れる'),
+          _buildInfoRow(Icons.phone_android, 'スマホを置いてその場を離れる'),
           _buildInfoRow(Icons.vibration, '動きを検知すると自動でアラーム発動'),
-          _buildInfoRow(Icons.volume_up, '3秒ごとに音量が段階的に増加（最大5段階）'),
+          _buildInfoRow(Icons.volume_up, '3秒ごとに音量が段階的に増加（5段階）'),
           _buildInfoRow(Icons.stop_circle_outlined, 'アラーム停止ボタンで解除'),
+          _buildInfoRow(Icons.music_note, '▶️ボタンで試し聴き後、好みの音を選択'),
         ],
       ),
     );
@@ -341,17 +364,17 @@ class HomeScreen extends StatelessWidget {
 
   Widget _buildInfoRow(IconData icon, String text) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
-          Icon(icon, color: Colors.white.withValues(alpha: 0.7), size: 15),
-          const SizedBox(width: 8),
+          Icon(icon, color: Colors.white.withValues(alpha: 0.65), size: 14),
+          const SizedBox(width: 6),
           Expanded(
             child: Text(
               text,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.75),
-                fontSize: 12,
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 11,
               ),
             ),
           ),
