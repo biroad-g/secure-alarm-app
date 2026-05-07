@@ -27,13 +27,17 @@ enum AlarmLevel {
 
   String get label {
     switch (this) {
-      case AlarmLevel.none:   return '待機中';
-      case AlarmLevel.level1: return 'レベル1（小）';
-      case AlarmLevel.level2: return 'レベル2';
-      case AlarmLevel.level3: return 'レベル3（中）';
-      case AlarmLevel.level4: return 'レベル4';
-      case AlarmLevel.level5: return 'レベル5（最大）';
+      case AlarmLevel.none:   return '停止中';
+      case AlarmLevel.level1: return 'Lv.1  音量20%';
+      case AlarmLevel.level2: return 'Lv.2  音量40%';
+      case AlarmLevel.level3: return 'Lv.3  音量60%';
+      case AlarmLevel.level4: return 'Lv.4  音量80%';
+      case AlarmLevel.level5: return 'Lv.5  音量100% MAX';
     }
+  }
+
+  String get volumePercent {
+    return '${(volume * 100).toInt()}%';
   }
 
   AlarmLevel get next {
