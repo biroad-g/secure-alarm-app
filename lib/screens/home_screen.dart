@@ -7,6 +7,7 @@ import '../widgets/alarm_level_indicator.dart';
 import '../widgets/sensitivity_slider.dart';
 import '../widgets/status_display.dart';
 import '../widgets/stop_alarm_button.dart';
+import '../widgets/sound_test_panel.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -57,6 +58,9 @@ class HomeScreen extends StatelessWidget {
                           value: state.sensitivity,
                           onChanged: service.setSensitivity,
                         ),
+                      const SizedBox(height: 8),
+                      if (state.status != AlarmStatus.alarming)
+                        SoundTestPanel(service: service),
                       const SizedBox(height: 24),
                       _buildAccelerometerDisplay(state),
                       const SizedBox(height: 24),
