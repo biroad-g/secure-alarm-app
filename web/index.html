@@ -37,186 +37,208 @@
 
   <script>
   // ============================================================
-  //  Secure Alarm - Web Engine v4
-  //  1) saPlay(type, vol) / saStop()          … 音声
-  //  2) saRequestMotion()                      … DeviceMotion許可
-  //  3) saGetMotion()                          … 最新モーション [x,y,z,ts]
-  //  4) saGetMouseDelta()                      … マウス移動量（PCフォールバック）
+  //  Secure Alarm Web Engine v5
+  //  Dart から呼ぶ関数:
+  //    saPlay(type, vol)            音声再生
+  //    saStop()                     音声停止
+  //    saSetCallbacks(onTrigger, onUpdate)  Dartコールバック登録
+  //    saStartMotion()              センサー開始
+  //    saStopMotion()               センサー停止
   // ============================================================
   (function() {
     'use strict';
 
-    // ── 音声エンジン ──────────────────────────────────────────
-    var _audioCtx = null;
-    var _activeNodes = [];
+    // ============================================================
+    //  1. 音声エンジン
+    // ============================================================
+    var _actx = null;
+    var _nodes = [];
 
-    function _getCtx() {
-      if (!_audioCtx || _audioCtx.state === 'closed') {
-        try { _audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
-        catch(e) { return null; }
+    function _ctx() {
+      if (!_actx || _actx.state === 'closed') {
+        try { _actx = new (window.AudioContext || window.webkitAudioContext)(); }
+        catch(e) { console.error('[SA] AudioContext error:', e); return null; }
       }
-      if (_audioCtx.state === 'suspended') { _audioCtx.resume(); }
-      return _audioCtx;
+      if (_actx.state === 'suspended') _actx.resume();
+      return _actx;
     }
-
-    function _stopAllNodes() {
-      _activeNodes.forEach(function(n) {
-        try { n.stop(0); } catch(e) {}
-        try { n.disconnect(); } catch(e) {}
-      });
-      _activeNodes = [];
+    function _stopNodes() {
+      _nodes.forEach(function(n){try{n.stop(0);}catch(e){}try{n.disconnect();}catch(e){}});
+      _nodes=[];
     }
-
-    function _playSiren(vol) {
-      var ctx = _getCtx(); if (!ctx) return;
-      var now = ctx.currentTime;
-      var g = ctx.createGain(); g.gain.setValueAtTime(vol*0.8, now); g.connect(ctx.destination);
-      var o = ctx.createOscillator(); o.type = 'sawtooth';
-      o.frequency.setValueAtTime(440, now);
-      o.frequency.linearRampToValueAtTime(880, now+0.6);
-      o.frequency.linearRampToValueAtTime(440, now+1.2);
-      o.frequency.linearRampToValueAtTime(880, now+1.8);
-      o.connect(g); o.start(now); o.stop(now+1.8); _activeNodes.push(o);
+    function _osc(ctx,type,freq,gainVal,t0,t1){
+      var g=ctx.createGain(); g.gain.setValueAtTime(gainVal,t0); g.connect(ctx.destination);
+      var o=ctx.createOscillator(); o.type=type; o.frequency.setValueAtTime(freq,t0);
+      o.connect(g); o.start(t0); o.stop(t1); _nodes.push(o); return {o:o,g:g};
     }
-    function _playBeeps(vol) {
-      var ctx = _getCtx(); if (!ctx) return;
-      var now = ctx.currentTime;
-      for (var i=0; i<5; i++) {
-        var t = now+i*0.22;
-        var g = ctx.createGain();
-        g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+0.01); g.gain.linearRampToValueAtTime(0,t+0.14);
-        g.connect(ctx.destination);
-        var o = ctx.createOscillator(); o.type='square'; o.frequency.setValueAtTime(1200,t);
-        o.connect(g); o.start(t); o.stop(t+0.16); _activeNodes.push(o);
+    function _playSiren(v){
+      var c=_ctx(); if(!c)return; var n=c.currentTime;
+      var g=c.createGain(); g.gain.setValueAtTime(v*.8,n); g.connect(c.destination);
+      var o=c.createOscillator(); o.type='sawtooth';
+      o.frequency.setValueAtTime(440,n);
+      o.frequency.linearRampToValueAtTime(880,n+.6);
+      o.frequency.linearRampToValueAtTime(440,n+1.2);
+      o.frequency.linearRampToValueAtTime(880,n+1.8);
+      o.connect(g); o.start(n); o.stop(n+1.8); _nodes.push(o);
+    }
+    function _playBeeps(v){
+      var c=_ctx(); if(!c)return; var n=c.currentTime;
+      for(var i=0;i<5;i++){
+        var t=n+i*.22, g=c.createGain();
+        g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(v,t+.01); g.gain.linearRampToValueAtTime(0,t+.14);
+        g.connect(c.destination);
+        var o=c.createOscillator(); o.type='square'; o.frequency.setValueAtTime(1200,t);
+        o.connect(g); o.start(t); o.stop(t+.16); _nodes.push(o);
       }
     }
-    function _playBuzzer(vol) {
-      var ctx = _getCtx(); if (!ctx) return;
-      var now = ctx.currentTime;
-      [[0,0.28],[0.4,0.68],[0.8,1.08]].forEach(function(p) {
-        var g = ctx.createGain(); g.gain.setValueAtTime(vol*0.9,now+p[0]); g.gain.setValueAtTime(0,now+p[1]); g.connect(ctx.destination);
-        var o = ctx.createOscillator(); o.type='sawtooth'; o.frequency.setValueAtTime(220,now+p[0]);
-        o.connect(g); o.start(now+p[0]); o.stop(now+p[1]+0.01); _activeNodes.push(o);
+    function _playBuzzer(v){
+      var c=_ctx(); if(!c)return; var n=c.currentTime;
+      [[0,.28],[.4,.68],[.8,1.08]].forEach(function(p){
+        var g=c.createGain(); g.gain.setValueAtTime(v*.9,n+p[0]); g.gain.setValueAtTime(0,n+p[1]);
+        g.connect(c.destination);
+        var o=c.createOscillator(); o.type='sawtooth'; o.frequency.setValueAtTime(220,n+p[0]);
+        o.connect(g); o.start(n+p[0]); o.stop(n+p[1]+.01); _nodes.push(o);
       });
     }
-    function _playHighAlarm(vol) {
-      var ctx = _getCtx(); if (!ctx) return;
-      var now = ctx.currentTime;
-      [2400,3200].forEach(function(f) {
-        var g = ctx.createGain(); g.gain.setValueAtTime(vol*0.55,now); g.gain.exponentialRampToValueAtTime(0.001,now+1.4); g.connect(ctx.destination);
-        var o = ctx.createOscillator(); o.type='sine';
-        o.frequency.setValueAtTime(f,now); o.frequency.linearRampToValueAtTime(f*1.6,now+0.7); o.frequency.linearRampToValueAtTime(f,now+1.4);
-        o.connect(g); o.start(now); o.stop(now+1.4); _activeNodes.push(o);
+    function _playHigh(v){
+      var c=_ctx(); if(!c)return; var n=c.currentTime;
+      [2400,3200].forEach(function(f){
+        var g=c.createGain(); g.gain.setValueAtTime(v*.55,n); g.gain.exponentialRampToValueAtTime(.001,n+1.4);
+        g.connect(c.destination);
+        var o=c.createOscillator(); o.type='sine';
+        o.frequency.setValueAtTime(f,n); o.frequency.linearRampToValueAtTime(f*1.6,n+.7); o.frequency.linearRampToValueAtTime(f,n+1.4);
+        o.connect(g); o.start(n); o.stop(n+1.4); _nodes.push(o);
       });
     }
-    function _playExplosive(vol) {
-      var ctx = _getCtx(); if (!ctx) return;
-      var now = ctx.currentTime;
-      var bg = ctx.createGain(); bg.gain.setValueAtTime(vol*0.7,now); bg.gain.exponentialRampToValueAtTime(0.001,now+0.45); bg.connect(ctx.destination);
-      var bo = ctx.createOscillator(); bo.type='square'; bo.frequency.setValueAtTime(120,now);
-      bo.connect(bg); bo.start(now); bo.stop(now+0.46); _activeNodes.push(bo);
-      [880,1760,2640].forEach(function(f,i) {
-        var t = now+i*0.18;
-        var g = ctx.createGain(); g.gain.setValueAtTime(vol*0.55,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.3); g.connect(ctx.destination);
-        var o = ctx.createOscillator(); o.type='square'; o.frequency.setValueAtTime(f,t);
-        o.connect(g); o.start(t); o.stop(t+0.32); _activeNodes.push(o);
+    function _playExplosive(v){
+      var c=_ctx(); if(!c)return; var n=c.currentTime;
+      var bg=c.createGain(); bg.gain.setValueAtTime(v*.7,n); bg.gain.exponentialRampToValueAtTime(.001,n+.45);
+      bg.connect(c.destination);
+      var bo=c.createOscillator(); bo.type='square'; bo.frequency.setValueAtTime(120,n);
+      bo.connect(bg); bo.start(n); bo.stop(n+.46); _nodes.push(bo);
+      [880,1760,2640].forEach(function(f,i){
+        var t=n+i*.18, g=c.createGain();
+        g.gain.setValueAtTime(v*.55,t); g.gain.exponentialRampToValueAtTime(.001,t+.3);
+        g.connect(c.destination);
+        var o=c.createOscillator(); o.type='square'; o.frequency.setValueAtTime(f,t);
+        o.connect(g); o.start(t); o.stop(t+.32); _nodes.push(o);
       });
     }
-
-    window.saPlay = function(soundType, volume) {
-      _stopAllNodes();
-      var vol = Math.min(1.0, Math.max(0.05, parseFloat(volume)||0.7));
-      var type = parseInt(soundType)||0;
-      console.log('[SA] saPlay type='+type+' vol='+vol.toFixed(2));
-      switch(type) {
-        case 0: _playSiren(vol); break;
-        case 1: _playBeeps(vol); break;
-        case 2: _playBuzzer(vol); break;
-        case 3: _playHighAlarm(vol); break;
-        case 4: _playExplosive(vol); break;
-        default: _playSiren(vol);
-      }
+    window.saPlay = function(type, vol) {
+      _stopNodes();
+      var v=Math.min(1,Math.max(.05,parseFloat(vol)||.7));
+      var t=parseInt(type)||0;
+      console.log('[SA] play type='+t+' vol='+v.toFixed(2));
+      switch(t){case 0:_playSiren(v);break;case 1:_playBeeps(v);break;case 2:_playBuzzer(v);break;case 3:_playHigh(v);break;case 4:_playExplosive(v);break;default:_playSiren(v);}
     };
-    window.saStop = function() { _stopAllNodes(); console.log('[SA] saStop'); };
+    window.saStop = function() { _stopNodes(); };
 
-    // ── モーションセンサーエンジン ───────────────────────────
-    var _latestMotion = null;   // [ax, ay, az, timestamp]
-    var _motionListening = false;
+    // ============================================================
+    //  2. センサーエンジン
+    //     Dart から saSetCallbacks() でコールバックを登録し
+    //     saStartMotion() / saStopMotion() で制御する
+    // ============================================================
+    var _cbTrigger = null;  // onMotionTriggered(delta)
+    var _cbUpdate  = null;  // onDeltaUpdate(delta)
+    var _motionActive = false;
+    var _prevX=null, _prevY=null, _prevZ=null;
+    var _updateInterval = null;
+    var _lastDelta = 0;
 
-    function _onDeviceMotion(e) {
+    // Dart側から登録される
+    window.saSetCallbacks = function(onTrigger, onUpdate) {
+      _cbTrigger = onTrigger;
+      _cbUpdate  = onUpdate;
+      console.log('[SA] callbacks registered');
+    };
+
+    // DeviceMotionイベントハンドラ
+    function _onMotion(e) {
       var a = e.accelerationIncludingGravity || e.acceleration;
       if (!a) return;
-      _latestMotion = [
-        a.x || 0,
-        a.y || 0,
-        a.z || 0,
-        Date.now()
-      ];
+      var x = a.x||0, y = a.y||0, z = a.z||0;
+      if (_prevX === null) { _prevX=x; _prevY=y; _prevZ=z; return; }
+      var dx=x-_prevX, dy=y-_prevY, dz=z-_prevZ;
+      var delta = Math.sqrt(dx*dx+dy*dy+dz*dz);
+      _prevX=x; _prevY=y; _prevZ=z;
+      _lastDelta = delta;
     }
 
-    // DeviceMotionを要求する。対応なら true、非対応なら false を返す
-    window.saRequestMotion = function() {
-      // DeviceMotionEvent 自体がなければ非対応
+    // 100msごとにDartへデルタ値を送る（UI更新 + 閾値判定はDart側）
+    function _startUpdateLoop() {
+      if (_updateInterval) clearInterval(_updateInterval);
+      _updateInterval = setInterval(function() {
+        if (!_motionActive) return;
+        var d = _lastDelta;
+        _lastDelta = 0; // リセット
+        if (_cbUpdate) {
+          try { _cbUpdate(d); } catch(e) { console.warn('[SA] cbUpdate error:', e); }
+        }
+      }, 100);
+    }
+
+    window.saStartMotion = function() {
+      if (_motionActive) return;
+      _motionActive = true;
+      _prevX=null; _prevY=null; _prevZ=null;
+      _lastDelta=0;
+
       if (typeof DeviceMotionEvent === 'undefined') {
-        console.log('[SA] DeviceMotionEvent not supported → mouse fallback');
-        return false;
+        console.log('[SA] DeviceMotionEvent not supported');
+        _startUpdateLoop(); // マウス/タッチ代替のためループだけ回す
+        return;
       }
-      // iOS 13+ は許可が必要
+
+      // iOS13+は許可が必要
       if (typeof DeviceMotionEvent.requestPermission === 'function') {
-        DeviceMotionEvent.requestPermission().then(function(res) {
-          if (res === 'granted') {
-            window.addEventListener('devicemotion', _onDeviceMotion, true);
-            _motionListening = true;
-            console.log('[SA] DeviceMotion permission granted (iOS)');
-          } else {
-            console.warn('[SA] DeviceMotion permission denied');
-          }
-        }).catch(function(e) {
-          console.error('[SA] requestPermission error:', e);
-        });
-        return true; // iOS → とりあえず true（許可後に値が来る）
+        DeviceMotionEvent.requestPermission()
+          .then(function(res) {
+            if (res === 'granted') {
+              window.addEventListener('devicemotion', _onMotion, true);
+              console.log('[SA] DeviceMotion granted (iOS)');
+            } else {
+              console.warn('[SA] DeviceMotion denied');
+            }
+          }).catch(function(e){ console.error('[SA] requestPermission:', e); });
+      } else {
+        window.addEventListener('devicemotion', _onMotion, true);
+        console.log('[SA] DeviceMotion started');
       }
-      // Android / その他 → 直接リスナー登録
-      window.addEventListener('devicemotion', _onDeviceMotion, true);
-      _motionListening = true;
-      console.log('[SA] DeviceMotion listener registered');
-      return true;
+      _startUpdateLoop();
     };
 
-    // 最新モーション値を返す（Dart 側でポーリング）
-    window.saGetMotion = function() {
-      return _latestMotion;
+    window.saStopMotion = function() {
+      _motionActive = false;
+      window.removeEventListener('devicemotion', _onMotion, true);
+      if (_updateInterval) { clearInterval(_updateInterval); _updateInterval=null; }
+      _prevX=null; _prevY=null; _prevZ=null; _lastDelta=0;
+      console.log('[SA] motion stopped');
     };
 
-    // ── マウス/タッチ移動（PCブラウザ フォールバック）──────
-    var _lastMouseX = -1, _lastMouseY = -1;
-    var _mouseDelta = 0;
+    // ============================================================
+    //  3. マウス/タッチ移動でデルタを補完（PCブラウザ用）
+    // ============================================================
+    var _mx=-1,_my=-1;
+    function _onMouseMove(e) {
+      if(_mx<0){_mx=e.clientX;_my=e.clientY;return;}
+      var dx=e.clientX-_mx, dy=e.clientY-_my;
+      var d=Math.sqrt(dx*dx+dy*dy)*0.25;
+      if(d>_lastDelta) _lastDelta=d; // 大きい方を保持
+      _mx=e.clientX; _my=e.clientY;
+    }
+    function _onTouchMove(e) {
+      if(e.touches.length<1)return;
+      var t=e.touches[0];
+      if(_mx<0){_mx=t.clientX;_my=t.clientY;return;}
+      var dx=t.clientX-_mx, dy=t.clientY-_my;
+      var d=Math.sqrt(dx*dx+dy*dy)*0.25;
+      if(d>_lastDelta) _lastDelta=d;
+      _mx=t.clientX; _my=t.clientY;
+    }
+    window.addEventListener('mousemove', _onMouseMove, {passive:true});
+    window.addEventListener('touchmove', _onTouchMove, {passive:true});
 
-    document.addEventListener('mousemove', function(e) {
-      if (_lastMouseX < 0) { _lastMouseX = e.clientX; _lastMouseY = e.clientY; return; }
-      var dx = e.clientX - _lastMouseX, dy = e.clientY - _lastMouseY;
-      _mouseDelta = Math.sqrt(dx*dx + dy*dy) * 0.3; // スケーリング
-      _lastMouseX = e.clientX; _lastMouseY = e.clientY;
-      // 減衰
-      setTimeout(function() { _mouseDelta = _mouseDelta * 0.5; }, 150);
-    });
-    document.addEventListener('touchmove', function(e) {
-      if (e.touches.length < 1) return;
-      var t = e.touches[0];
-      if (_lastMouseX < 0) { _lastMouseX = t.clientX; _lastMouseY = t.clientY; return; }
-      var dx = t.clientX - _lastMouseX, dy = t.clientY - _lastMouseY;
-      _mouseDelta = Math.sqrt(dx*dx + dy*dy) * 0.3;
-      _lastMouseX = t.clientX; _lastMouseY = t.clientY;
-      setTimeout(function() { _mouseDelta = _mouseDelta * 0.5; }, 150);
-    });
-
-    window.saGetMouseDelta = function() {
-      var d = _mouseDelta;
-      _mouseDelta = 0;
-      return d;
-    };
-
-    console.log('[SA] Engine v4 ready ✅');
+    console.log('[SA] Engine v5 ready ✅');
   })();
   </script>
 

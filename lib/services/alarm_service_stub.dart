@@ -1,6 +1,8 @@
 /// スタブ実装（モバイルプラットフォーム用）
 void jsPlay(int soundType, double volume) {}
 void jsStop() {}
-bool requestDeviceMotion() => false;
-List<double>? getLatestMotion() => null;
-double getMouseDelta() => 0.0;
+void jsStartSensor({
+  required void Function(double delta) onMotionTriggered,
+  required void Function(double delta) onDeltaUpdate,
+}) {}
+void jsStopSensor() {}

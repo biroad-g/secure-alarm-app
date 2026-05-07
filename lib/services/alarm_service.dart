@@ -16,19 +16,13 @@ class AlarmService extends ChangeNotifier {
   Timer? _levelTimer;
   Timer? _loopTimer;
   Timer? _coolTimer;
-  // Webセンサー用：DeviceMotion値を受け取るストリームコントローラ
-  Timer? _webSensorTimer;
 
   bool _alarming = false;
   bool _cooldown = false;
+  // ネイティブセンサー用
   double _px = 0, _py = 0, _pz = 0;
   bool _sensorReady = false;
-
-  // センサー許可状態
-  bool _sensorPermissionDenied = false;
-  bool get sensorPermissionDenied => _sensorPermissionDenied;
-
-  // Webセンサーが動いているか
+  // Webセンサー状態
   bool _webSensorActive = false;
   bool get webSensorActive => _webSensorActive;
 
@@ -42,12 +36,10 @@ class AlarmService extends ChangeNotifier {
     {'name': '🆘 爆発的警報',   'desc': '低音＋3段重ねビープ'},
   ];
 
-  void _jsPlay(int soundType, double volume) {
-    jsbridge.jsPlay(soundType, volume);
-  }
-  void _jsStop() {
-    jsbridge.jsStop();
-  }
+  // ─────────────────── 音声 ───────────────────
+  void _jsPlay(int soundType, double volume) =>
+      jsbridge.jsPlay(soundType, volume);
+  void _jsStop() => jsbridge.jsStop();
 
   void playTest(int type) => _jsPlay(type, 0.7);
   void selectSound(int type) {
@@ -59,19 +51,23 @@ class AlarmService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── 防犯モード ON ──
+  // ─────────────────── 防犯モード ─────────────
   Future<void> enable() async {
-    _s = _s.copyWith(status: AlarmStatus.monitoring, level: AlarmLevel.none);
+    _alarming = false;
+    _cooldown = false;
+    _s = _s.copyWith(
+      status: AlarmStatus.monitoring,
+      level: AlarmLevel.none,
+      currentDelta: 0,
+    );
     notifyListeners();
-
     if (kIsWeb) {
-      await _startWebSensor();
+      _startWebSensor();
     } else {
       _startNativeSensor();
     }
   }
 
-  // ── 防犯モード OFF ──
   Future<void> disable() async {
     _stopAll();
     _s = _s.copyWith(
@@ -82,7 +78,6 @@ class AlarmService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── アラーム停止（監視継続） ──
   Future<void> stopAlarm() async {
     _stopAlarmSound();
     _s = _s.copyWith(status: AlarmStatus.monitoring, level: AlarmLevel.none);
@@ -94,76 +89,42 @@ class AlarmService extends ChangeNotifier {
     });
   }
 
-  // ──────────────────────────────────────────
-  //  Webセンサー：JS側でDeviceMotionを受け取り
-  //  Dartタイマーで定期的にポーリングする
-  // ──────────────────────────────────────────
-  Future<void> _startWebSensor() async {
-    _webSensorTimer?.cancel();
-    _sensorReady = false;
+  // ─────────────────── Webセンサー ────────────
+  // JS側からコールバックで通知される方式
+  void _startWebSensor() {
     _webSensorActive = false;
-    _sensorPermissionDenied = false;
-
-    // JS側でDeviceMotion許可リクエスト＋リスナー登録
-    final ok = jsbridge.requestDeviceMotion();
-    if (!ok) {
-      // DeviceMotionEvent非対応（PCブラウザ等）→ マウス移動で代替
-      _startMouseFallback();
-      return;
+    try {
+      jsbridge.jsStartSensor(
+        // アラーム発火通知（JSがdelta > sensitivityを判定して呼ぶ）
+        onMotionTriggered: (double delta) {
+          _webSensorActive = true;
+          _s = _s.copyWith(currentDelta: delta);
+          if (_s.status == AlarmStatus.monitoring && !_cooldown && !_alarming) {
+            _triggerAlarm();
+          } else {
+            notifyListeners();
+          }
+        },
+        // deltaの定期更新（UI表示用）
+        onDeltaUpdate: (double delta) {
+          _webSensorActive = true;
+          _s = _s.copyWith(currentDelta: delta);
+          notifyListeners();
+          // JS側が閾値判定せず、Dart側で判定する
+          if (_s.status == AlarmStatus.monitoring && !_cooldown && !_alarming &&
+              delta > _s.sensitivity) {
+            _triggerAlarm();
+          }
+        },
+      );
+      _webSensorActive = true;
+      notifyListeners();
+    } catch (e) {
+      if (kDebugMode) debugPrint('[AlarmService] jsStartSensor error: $e');
     }
-
-    // 100msごとにJS側の最新値をポーリング
-    _webSensorTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
-      if (_s.status == AlarmStatus.standby) return;
-
-      final vals = jsbridge.getLatestMotion(); // [x, y, z, timestamp]
-      if (vals == null || vals.length < 4) return;
-
-      final x = vals[0], y = vals[1], z = vals[2];
-      // vals[3] はタイムスタンプ（未使用）
-
-      // 初回
-      if (!_sensorReady) {
-        _px = x; _py = y; _pz = z;
-        _sensorReady = true;
-        _webSensorActive = true;
-        notifyListeners();
-        return;
-      }
-
-      final dx = x - _px, dy = y - _py, dz = z - _pz;
-      final delta = sqrt(dx*dx + dy*dy + dz*dz);
-      _px = x; _py = y; _pz = z;
-
-      _s = _s.copyWith(currentDelta: delta);
-      notifyListeners();
-
-      if (_s.status == AlarmStatus.monitoring && !_cooldown && !_alarming && delta > _s.sensitivity) {
-        _triggerAlarm();
-      }
-    });
   }
 
-  // マウス/タッチ移動でセンサー代替（PCブラウザ向け）
-  void _startMouseFallback() {
-    _webSensorActive = true;
-    // JS側のマウス移動デルタをポーリング
-    _webSensorTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
-      if (_s.status == AlarmStatus.standby) return;
-
-      final delta = jsbridge.getMouseDelta();
-      _s = _s.copyWith(currentDelta: delta);
-      notifyListeners();
-
-      if (_s.status == AlarmStatus.monitoring && !_cooldown && !_alarming && delta > _s.sensitivity) {
-        _triggerAlarm();
-      }
-    });
-  }
-
-  // ──────────────────────────────────────────
-  //  ネイティブセンサー（Android/iOS）
-  // ──────────────────────────────────────────
+  // ─────────────────── ネイティブセンサー ─────
   void _startNativeSensor() {
     _sensorReady = false;
     _sensorSub?.cancel();
@@ -181,20 +142,19 @@ class AlarmService extends ChangeNotifier {
       return;
     }
     final dx = e.x - _px, dy = e.y - _py, dz = e.z - _pz;
-    final delta = sqrt(dx*dx + dy*dy + dz*dz);
+    final delta = sqrt(dx * dx + dy * dy + dz * dz);
     _px = e.x; _py = e.y; _pz = e.z;
 
     _s = _s.copyWith(currentDelta: delta);
     notifyListeners();
 
-    if (_s.status == AlarmStatus.monitoring && !_cooldown && !_alarming && delta > _s.sensitivity) {
+    if (_s.status == AlarmStatus.monitoring && !_cooldown && !_alarming &&
+        delta > _s.sensitivity) {
       _triggerAlarm();
     }
   }
 
-  // ──────────────────────────────────────────
-  //  アラームロジック
-  // ──────────────────────────────────────────
+  // ─────────────────── アラームロジック ────────
   void _triggerAlarm() {
     _alarming = true;
     _s = _s.copyWith(status: AlarmStatus.alarming, level: AlarmLevel.level1);
@@ -235,8 +195,8 @@ class AlarmService extends ChangeNotifier {
   void _stopAll() {
     _stopAlarmSound();
     _sensorSub?.cancel();
-    _webSensorTimer?.cancel();
     _coolTimer?.cancel();
+    if (kIsWeb) jsbridge.jsStopSensor();
     _sensorReady = false;
     _cooldown = false;
     _webSensorActive = false;

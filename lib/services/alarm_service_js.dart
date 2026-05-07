@@ -1,24 +1,30 @@
 import 'dart:js_interop';
 
 /// Web プラットフォーム用 JS ブリッジ
-/// window.saPlay / window.saStop / window.saRequestMotion /
-/// window.saGetMotion / window.saGetMouseDelta を呼び出す
+/// index.html に定義された window.saXxx 関数を呼び出す
 
+// ── 音声 ──────────────────────────────────────
 @JS('saPlay')
 external void _saPlay(JSNumber soundType, JSNumber volume);
 
 @JS('saStop')
 external void _saStop();
 
-@JS('saRequestMotion')
-external JSBoolean _saRequestMotion();
+// ── センサー ─────────────────────────────────
+/// Dartのコールバック関数をJSに登録する
+/// JS側は delta が閾値を超えたとき saOnMotion(delta) を呼ぶ
+@JS('saSetCallbacks')
+external void _saSetCallbacks(JSFunction onMotion, JSFunction onDelta);
 
-@JS('saGetMotion')
-external JSArray<JSNumber>? _saGetMotion();
+/// DeviceMotionリスナーを開始する
+@JS('saStartMotion')
+external void _saStartMotion();
 
-@JS('saGetMouseDelta')
-external JSNumber _saGetMouseDelta();
+/// DeviceMotionリスナーを停止する
+@JS('saStopMotion')
+external void _saStopMotion();
 
+// ── 公開関数 ──────────────────────────────────
 void jsPlay(int soundType, double volume) {
   try { _saPlay(soundType.toJS, volume.toJS); } catch (_) {}
 }
@@ -27,38 +33,21 @@ void jsStop() {
   try { _saStop(); } catch (_) {}
 }
 
-/// DeviceMotionリスナーを登録し、対応していれば true を返す
-bool requestDeviceMotion() {
+/// コールバックを登録してモーション監視を開始
+/// [onMotionTriggered] アラーム発火通知 (delta値を受け取る)
+/// [onDeltaUpdate]     delta値の定期更新
+void jsStartSensor({
+  required void Function(double delta) onMotionTriggered,
+  required void Function(double delta) onDeltaUpdate,
+}) {
   try {
-    return _saRequestMotion().toDart;
-  } catch (_) {
-    return false;
-  }
+    final jsTrigger = ((JSNumber d) => onMotionTriggered(d.toDartDouble)).toJS;
+    final jsUpdate  = ((JSNumber d) => onDeltaUpdate(d.toDartDouble)).toJS;
+    _saSetCallbacks(jsTrigger, jsUpdate);
+    _saStartMotion();
+  } catch (_) {}
 }
 
-/// 最新のモーション値 [x, y, z, timestamp] を返す（値がなければ null）
-List<double>? getLatestMotion() {
-  try {
-    final arr = _saGetMotion();
-    if (arr == null) return null;
-    final list = arr.toDart;
-    if (list.length < 4) return null;
-    return [
-      list[0].toDartDouble,
-      list[1].toDartDouble,
-      list[2].toDartDouble,
-      list[3].toDartDouble,
-    ];
-  } catch (_) {
-    return null;
-  }
-}
-
-/// マウス移動デルタ（PCブラウザ代替）
-double getMouseDelta() {
-  try {
-    return _saGetMouseDelta().toDartDouble;
-  } catch (_) {
-    return 0.0;
-  }
+void jsStopSensor() {
+  try { _saStopMotion(); } catch (_) {}
 }
