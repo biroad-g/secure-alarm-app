@@ -4,8 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:vibration/vibration.dart';
 import '../models/alarm_state.dart';
+import 'web_audio_bridge.dart';
 
-// Web Audio API を JavaScript 経由で操作するサービス
 class AlarmService extends ChangeNotifier {
   StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
   Timer? _levelUpTimer;
@@ -20,7 +20,6 @@ class AlarmService extends ChangeNotifier {
   bool _cooldownActive = false;
   bool _isPlayingAlarm = false;
 
-  // 現在選択中のサウンドタイプ（0〜4）
   int _selectedSoundType = 0;
   int get selectedSoundType => _selectedSoundType;
 
@@ -32,33 +31,28 @@ class AlarmService extends ChangeNotifier {
   static const List<Map<String, dynamic>> soundTypes = [
     {
       'id': 0,
-      'name': '🔴 緊急サイレン',
+      'name': '🚨 緊急サイレン',
       'desc': '救急車風・周波数が上下するサイレン音',
-      'icon': '🚨',
     },
     {
       'id': 1,
-      'name': '🔔 電子ビープ',
+      'name': '📢 電子ビープ',
       'desc': '短く鋭いビープ音の連続',
-      'icon': '📢',
     },
     {
       'id': 2,
-      'name': '⚠️ 警告ブザー',
+      'name': '🔊 警告ブザー',
       'desc': '低音の警告ブザー音',
-      'icon': '🔊',
     },
     {
       'id': 3,
-      'name': '🎵 高音アラーム',
+      'name': '📣 高音アラーム',
       'desc': '高音で鋭いアラーム音',
-      'icon': '📣',
     },
     {
       'id': 4,
-      'name': '💥 爆発的警報',
+      'name': '🆘 爆発的警報',
       'desc': '複数音の重なる強烈な警報',
-      'icon': '🆘',
     },
   ];
 
@@ -71,12 +65,12 @@ class AlarmService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// テスト音を鳴らす
+  /// テスト音を再生する
   void playTestSound(int soundType) {
     if (kIsWeb) {
-      _playWebAudio(soundType, 0.7, testMode: true);
+      WebAudioBridge.play(soundType, 0.7);
     } else {
-      _playNativeTestSound(soundType);
+      _vibrateDevice();
     }
   }
 
@@ -93,7 +87,7 @@ class AlarmService extends ChangeNotifier {
 
   /// 盗難防止モードを無効化
   Future<void> disableProtection() async {
-    await _stopAlarm();
+    await _stopAlarmInternal();
     _stopListening();
     _state = _state.copyWith(
       isProtectionEnabled: false,
@@ -106,7 +100,7 @@ class AlarmService extends ChangeNotifier {
 
   /// アラームを手動停止
   Future<void> stopAlarm() async {
-    await _stopAlarm();
+    await _stopAlarmInternal();
     if (_state.isProtectionEnabled) {
       _state = _state.copyWith(
         status: AlarmStatus.monitoring,
@@ -191,7 +185,7 @@ class AlarmService extends ChangeNotifier {
       level: AlarmLevel.level1,
     );
     notifyListeners();
-    _playAlarmByLevel(AlarmLevel.level1);
+    _playByLevel(AlarmLevel.level1);
     _startLevelUpTimer();
     _vibrateDevice();
   }
@@ -210,7 +204,7 @@ class AlarmService extends ChangeNotifier {
           final nextLevel = _alarmLevelFromIndex(currentIdx + 1);
           _state = _state.copyWith(level: nextLevel);
           notifyListeners();
-          _playAlarmByLevel(nextLevel);
+          _playByLevel(nextLevel);
           if (kDebugMode) debugPrint('🔊 レベルアップ: ${nextLevel.label}');
         } else {
           timer.cancel();
@@ -219,26 +213,31 @@ class AlarmService extends ChangeNotifier {
     );
   }
 
-  void _playAlarmByLevel(AlarmLevel level) {
+  void _playByLevel(AlarmLevel level) {
     final volume = level.volume;
+
     if (kIsWeb) {
-      // Webではループ再生タイマーで繰り返す
+      // まず1回即時再生
+      WebAudioBridge.play(_selectedSoundType, volume);
+      // ループタイマーで繰り返し再生
       _audioLoopTimer?.cancel();
-      _playWebAudio(_selectedSoundType, volume);
       _audioLoopTimer = Timer.periodic(
-        const Duration(milliseconds: 1500),
+        const Duration(milliseconds: 1800),
         (_) {
           if (_isPlayingAlarm) {
-            _playWebAudio(_selectedSoundType, volume);
+            WebAudioBridge.play(_selectedSoundType, volume);
+          } else {
+            _audioLoopTimer?.cancel();
           }
         },
       );
     } else {
-      _playNativeAlarm(level);
+      // Androidはバイブレーションで代替
+      _vibrateDevice();
     }
   }
 
-  Future<void> _stopAlarm() async {
+  Future<void> _stopAlarmInternal() async {
     _isPlayingAlarm = false;
     _levelUpTimer?.cancel();
     _levelUpTimer = null;
@@ -246,7 +245,7 @@ class AlarmService extends ChangeNotifier {
     _audioLoopTimer = null;
 
     if (kIsWeb) {
-      _stopWebAudio();
+      WebAudioBridge.stop();
     }
 
     _cooldownActive = true;
@@ -254,78 +253,6 @@ class AlarmService extends ChangeNotifier {
     _detectionCooldown = Timer(const Duration(seconds: 3), () {
       _cooldownActive = false;
     });
-  }
-
-  // ============================================================
-  //  Web Audio API（dart:js_interop経由）
-  // ============================================================
-
-  void _playWebAudio(int soundType, double volume, {bool testMode = false}) {
-    try {
-      // JavaScriptのWeb Audio APIを直接呼び出す
-      _callWebAudioJS(soundType, volume, testMode);
-    } catch (e) {
-      if (kDebugMode) debugPrint('Web audio error: $e');
-    }
-  }
-
-  void _stopWebAudio() {
-    try {
-      _callStopWebAudioJS();
-    } catch (e) {
-      if (kDebugMode) debugPrint('Stop web audio error: $e');
-    }
-  }
-
-  // JavaScriptのwindow.SecureAlarmAudioを呼び出す
-  void _callWebAudioJS(int soundType, double volume, bool testMode) {
-    if (!kIsWeb) return;
-    // JS interop経由でWeb Audio APIを呼び出す
-    // index.htmlに埋め込んだSecureAlarmAudio関数を使用
-    try {
-      // ignore: undefined_prefixed_name
-      // dart:js を使わずflutter_bootstrap.jsのwindow経由で呼び出す
-      // platform channel相当の処理はindex.html側のJSで行う
-      _triggerJSAudio(soundType, volume);
-    } catch (e) {
-      if (kDebugMode) debugPrint('JS call error: $e');
-    }
-  }
-
-  void _callStopWebAudioJS() {
-    if (!kIsWeb) return;
-    try {
-      _stopJSAudio();
-    } catch (e) {
-      if (kDebugMode) debugPrint('JS stop error: $e');
-    }
-  }
-
-  // ignore: unused_element
-  void _triggerJSAudio(int soundType, double volume) {
-    // このメソッドはコンパイル後に dart2js で
-    // window.secureAlarmPlay(soundType, volume) にマッピングされる
-    // 実際の呼び出しはindex.html内のJSイベントで処理
-    if (kDebugMode) {
-      debugPrint('🔊 Play sound: type=$soundType vol=$volume');
-    }
-  }
-
-  // ignore: unused_element
-  void _stopJSAudio() {
-    if (kDebugMode) debugPrint('⏹ Stop sound');
-  }
-
-  // ============================================================
-  //  ネイティブ音声（Android）
-  // ============================================================
-
-  void _playNativeAlarm(AlarmLevel level) {
-    _vibrateDevice();
-  }
-
-  void _playNativeTestSound(int soundType) {
-    _vibrateDevice();
   }
 
   void _vibrateDevice() async {
