@@ -1,18 +1,24 @@
 {
   "version": 2,
-  "buildCommand": null,
+  "buildCommand": "",
   "outputDirectory": "docs",
-  "routes": [
+  "installCommand": "",
+  "headers": [
     {
-      "src": "/flutter_service_worker.js",
-      "headers": {
-        "Cache-Control": "no-cache"
-      },
-      "dest": "/flutter_service_worker.js"
+      "source": "/flutter_service_worker.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
     },
     {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
+        { "key": "Cross-Origin-Embedder-Policy", "value": "require-corp" }
+      ]
     }
+  ],
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
