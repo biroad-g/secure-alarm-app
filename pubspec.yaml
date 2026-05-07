@@ -1,5 +1,5 @@
 name: secure_alarm
-description: スマートフォン盗難防止アプリ - 振動検知で段階的アラームを鳴らす
+description: スマートフォン盗難防止アプリ
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -10,13 +10,10 @@ dependencies:
   flutter:
     sdk: flutter
   sensors_plus: 4.0.2
-  audioplayers: 5.2.1
   vibration: 1.9.0
   shared_preferences: 2.5.3
   provider: 6.1.5+1
-  permission_handler: 11.3.1
   wakelock_plus: 1.2.8
-  js: 0.6.7
   cupertino_icons: ^1.0.2
 
 dev_dependencies:
@@ -26,5 +23,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/sounds/

@@ -2,12 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/alarm_service.dart';
 import '../models/alarm_state.dart';
-import '../widgets/protection_toggle.dart';
-import '../widgets/alarm_level_indicator.dart';
-import '../widgets/sensitivity_slider.dart';
-import '../widgets/status_display.dart';
-import '../widgets/stop_alarm_button.dart';
-import '../widgets/sound_test_panel.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -15,84 +9,55 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Consumer<AlarmService>(
-      builder: (context, service, child) {
-        final state = service.state;
+      builder: (context, svc, _) {
+        final s = svc.state;
         return Scaffold(
           body: Container(
             width: double.infinity,
             height: double.infinity,
-            decoration: BoxDecoration(
-              gradient: _buildGradient(state),
-            ),
+            decoration: BoxDecoration(gradient: _gradient(s)),
             child: SafeArea(
               child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 20.0, vertical: 12.0),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // ── ヘッダー ──
-                    _buildHeader(state),
-                    const SizedBox(height: 16),
+                    _Header(s: s),
+                    const SizedBox(height: 14),
+                    _StatusCard(s: s),
+                    const SizedBox(height: 14),
+                    _ShieldIcon(s: s),
+                    const SizedBox(height: 14),
+                    _LevelBar(s: s),
+                    const SizedBox(height: 14),
 
-                    // ── ステータス表示 ──
-                    StatusDisplay(state: state),
-                    const SizedBox(height: 16),
+                    // アラーム停止ボタン
+                    if (s.isAlarming)
+                      _StopButton(onTap: () => svc.stopAlarm()),
 
-                    // ── シールドアイコン ──
-                    Center(child: _buildShieldIcon(state)),
-                    const SizedBox(height: 16),
-
-                    // ── アラームレベルインジケーター ──
-                    AlarmLevelIndicator(state: state),
-                    const SizedBox(height: 16),
-
-                    // ── アラーム停止ボタン（アラーム中のみ） ──
-                    if (state.status == AlarmStatus.alarming) ...[
-                      StopAlarmButton(
-                          onStop: () => service.stopAlarm()),
-                      const SizedBox(height: 16),
-                    ],
-
-                    // ── 盗難防止モード ON/OFF ──
-                    if (state.status != AlarmStatus.alarming) ...[
-                      ProtectionToggle(
-                        isEnabled: state.isProtectionEnabled,
-                        onChanged: (val) async {
-                          if (val) {
-                            await service.enableProtection();
-                          } else {
-                            await service.disableProtection();
-                          }
-                        },
+                    // 防犯モード ON/OFF
+                    if (!s.isAlarming)
+                      _ToggleButton(
+                        isOn: s.isActive,
+                        onTap: () => s.isActive ? svc.disable() : svc.enable(),
                       ),
-                      const SizedBox(height: 16),
-                    ],
+                    const SizedBox(height: 14),
 
-                    // ── 検知感度スライダー（待機中・監視中のみ） ──
-                    if (state.status != AlarmStatus.alarming) ...[
-                      SensitivitySlider(
-                        value: state.sensitivity,
-                        onChanged: service.setSensitivity,
-                      ),
-                      const SizedBox(height: 16),
-                    ],
+                    // 感度スライダー
+                    if (!s.isAlarming)
+                      _SensSlider(value: s.sensitivity, onChange: svc.setSensitivity),
+                    if (!s.isAlarming) const SizedBox(height: 14),
 
-                    // ── 振動センサー表示（監視中・アラーム中） ──
-                    if (state.isProtectionEnabled) ...[
-                      _buildAccelerometerDisplay(state),
-                      const SizedBox(height: 16),
-                    ],
+                    // 振動センサー表示
+                    if (s.isActive)
+                      _SensorDisplay(s: s),
+                    if (s.isActive) const SizedBox(height: 14),
 
-                    // ── テスト音パネル（待機中・監視中のみ） ──
-                    if (state.status != AlarmStatus.alarming) ...[
-                      SoundTestPanel(service: service),
-                      const SizedBox(height: 16),
-                    ],
+                    // ★ サウンドテストパネル（常に表示）
+                    _SoundPanel(svc: svc),
+                    const SizedBox(height: 14),
 
-                    // ── 使い方 ──
-                    _buildInfoCard(),
+                    _InfoCard(),
                     const SizedBox(height: 20),
                   ],
                 ),
@@ -104,282 +69,493 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  LinearGradient _buildGradient(AlarmStateModel state) {
-    if (state.status == AlarmStatus.alarming) {
-      final intensity = (state.level.index2 / 5.0).clamp(0.0, 1.0);
+  LinearGradient _gradient(AppState s) {
+    if (s.isAlarming) {
+      final t = (s.level.step / 5.0).clamp(0.0, 1.0);
       return LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
+        begin: Alignment.topLeft, end: Alignment.bottomRight,
         colors: [
-          Color.lerp(
-              const Color(0xFF8B0000), const Color(0xFFFF0000), intensity)!,
-          Color.lerp(
-              const Color(0xFFFF4500), const Color(0xFFFF6B00), intensity)!,
+          Color.lerp(const Color(0xFF8B0000), const Color(0xFFFF0000), t)!,
+          Color.lerp(const Color(0xFFCC3300), const Color(0xFFFF6600), t)!,
         ],
       );
-    } else if (state.status == AlarmStatus.monitoring) {
+    } else if (s.status == AlarmStatus.monitoring) {
       return const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
+        begin: Alignment.topLeft, end: Alignment.bottomRight,
         colors: [Color(0xFF6A1B9A), Color(0xFFE65100)],
       );
-    } else {
-      return const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [Color(0xFF4A148C), Color(0xFF880E4F)],
-      );
     }
-  }
-
-  Widget _buildHeader(AlarmStateModel state) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Secure Alarm',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.95),
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.0,
-              ),
-            ),
-            Text(
-              '盗難防止システム',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.7),
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ),
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(
-            state.isProtectionEnabled
-                ? Icons.security
-                : Icons.security_outlined,
-            color: Colors.white,
-            size: 26,
-          ),
-        ),
-      ],
+    return const LinearGradient(
+      begin: Alignment.topLeft, end: Alignment.bottomRight,
+      colors: [Color(0xFF4A148C), Color(0xFF880E4F)],
     );
   }
+}
 
-  Widget _buildShieldIcon(AlarmStateModel state) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.95, end: 1.05),
-      duration: const Duration(milliseconds: 1200),
-      curve: Curves.easeInOut,
-      builder: (context, scale, child) {
-        return Transform.scale(
-          scale: state.status == AlarmStatus.alarming ? scale : 1.0,
-          child: child,
-        );
-      },
-      child: Container(
-        width: 130,
-        height: 130,
+// ── ヘッダー ──────────────────────────────────
+class _Header extends StatelessWidget {
+  final AppState s;
+  const _Header({required this.s});
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Secure Alarm',
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.95),
+            fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+        Text('盗難防止システム',
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12)),
+      ]),
+      Container(
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          shape: BoxShape.circle,
           color: Colors.white.withValues(alpha: 0.15),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.3),
-            width: 2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 20,
-              spreadRadius: 2,
-            ),
-          ],
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(
-          _getShieldIcon(state.status),
-          size: 72,
-          color: Colors.white,
+          s.isActive ? Icons.security : Icons.security_outlined,
+          color: Colors.white, size: 26,
         ),
       ),
-    );
-  }
+    ],
+  );
+}
 
-  IconData _getShieldIcon(AlarmStatus status) {
-    switch (status) {
-      case AlarmStatus.standby:
-        return Icons.shield_outlined;
-      case AlarmStatus.monitoring:
-        return Icons.shield;
-      case AlarmStatus.detected:
-        return Icons.warning_rounded;
-      case AlarmStatus.alarming:
-        return Icons.warning_amber_rounded;
-    }
-  }
-
-  Widget _buildAccelerometerDisplay(AlarmStateModel state) {
-    return Container(
-      padding: const EdgeInsets.all(14),
+// ── ステータスカード ──────────────────────────
+class _StatusCard extends StatelessWidget {
+  final AppState s;
+  const _StatusCard({required this.s});
+  @override
+  Widget build(BuildContext context) {
+    final (color, icon, title, sub) = switch (s.status) {
+      AlarmStatus.standby   => (Colors.grey, Icons.pause_circle_outline,  '待機中',        '防犯モードをONにしてください'),
+      AlarmStatus.monitoring=> (Colors.greenAccent, Icons.remove_red_eye, '監視中',        '振動を検知するとアラームが鳴ります'),
+      AlarmStatus.alarming  => (Colors.redAccent, Icons.warning_amber_rounded, '🚨 アラーム発動中！', '不審な動きを検知しました！'),
+    };
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 400),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+        color: color.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withValues(alpha: 0.6), width: 1.5),
       ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.sensors,
-                  color: Colors.white.withValues(alpha: 0.8), size: 16),
-              const SizedBox(width: 6),
-              Text(
-                '振動センサー',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.8),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildMeterBar(state.currentAcceleration, state.sensitivity),
-              Column(
-                children: [
-                  Text(
-                    state.currentAcceleration.toStringAsFixed(2),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Text(
-                    'm/s²',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.7),
-                      fontSize: 12,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '閾値: ${state.sensitivity.toStringAsFixed(1)}',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.6),
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ],
-      ),
+      child: Row(children: [
+        Icon(icon, color: color, size: 34),
+        const SizedBox(width: 14),
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+          Text(sub,   style: TextStyle(color: Colors.white.withValues(alpha: 0.72), fontSize: 12)),
+        ]),
+      ]),
     );
   }
+}
 
-  Widget _buildMeterBar(double current, double threshold) {
-    final ratio = (current / (threshold * 2)).clamp(0.0, 1.0);
-    return SizedBox(
-      width: 36,
-      height: 72,
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          color: Colors.white.withValues(alpha: 0.1),
-        ),
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 100),
-            width: 36,
-            height: 72 * ratio,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              gradient: LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                colors: [
-                  Colors.greenAccent,
-                  ratio > 0.7 ? Colors.redAccent : Colors.orangeAccent,
-                ],
+// ── シールドアイコン ──────────────────────────
+class _ShieldIcon extends StatelessWidget {
+  final AppState s;
+  const _ShieldIcon({required this.s});
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Container(
+      width: 120, height: 120,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white.withValues(alpha: 0.13),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 2),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 18)],
+      ),
+      child: Icon(
+        switch (s.status) {
+          AlarmStatus.standby    => Icons.shield_outlined,
+          AlarmStatus.monitoring => Icons.shield,
+          AlarmStatus.alarming   => Icons.warning_amber_rounded,
+        },
+        size: 68, color: Colors.white,
+      ),
+    ),
+  );
+}
+
+// ── アラームレベルバー ──────────────────────
+class _LevelBar extends StatelessWidget {
+  final AppState s;
+  const _LevelBar({required this.s});
+  @override
+  Widget build(BuildContext context) {
+    final lv = s.level.step;
+    return _Card(child: Column(children: [
+      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(Icons.volume_up, color: Colors.white.withValues(alpha: 0.8), size: 16),
+        const SizedBox(width: 6),
+        Text('アラームレベル',
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 13, fontWeight: FontWeight.w600)),
+      ]),
+      const SizedBox(height: 14),
+      Row(mainAxisAlignment: MainAxisAlignment.center,
+        children: List.generate(5, (i) {
+          final on = lv > i;
+          final h = 22.0 + (i + 1) * 9.0;
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 5),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              width: 30, height: h,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+                color: on ? _barColor(i + 1) : Colors.white.withValues(alpha: 0.15),
+                boxShadow: on ? [BoxShadow(color: _barColor(i+1).withValues(alpha: 0.5), blurRadius: 8)] : [],
               ),
             ),
-          ),
+          );
+        }),
+      ),
+      const SizedBox(height: 10),
+      Text(s.level.label,
+        style: TextStyle(
+          color: lv == 0 ? Colors.white.withValues(alpha: 0.45) : Colors.white,
+          fontSize: 14, fontWeight: FontWeight.bold)),
+      if (lv > 0) ...[
+        const SizedBox(height: 4),
+        Text('音量: ${(s.level.volume * 100).toInt()}%',
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11)),
+      ],
+    ]));
+  }
+
+  Color _barColor(int lv) => switch (lv) {
+    1 => Colors.greenAccent,
+    2 => Colors.lightGreenAccent,
+    3 => Colors.yellowAccent,
+    4 => Colors.orangeAccent,
+    _ => Colors.redAccent,
+  };
+}
+
+// ── アラーム停止ボタン ────────────────────────
+class _StopButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _StopButton({required this.onTap});
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 14),
+    child: ElevatedButton.icon(
+      onPressed: onTap,
+      icon: const Icon(Icons.stop_circle_outlined, size: 26),
+      label: const Text('アラームを停止する', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.red.shade700,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        elevation: 6,
+      ),
+    ),
+  );
+}
+
+// ── ON/OFF トグルボタン ───────────────────────
+class _ToggleButton extends StatelessWidget {
+  final bool isOn;
+  final VoidCallback onTap;
+  const _ToggleButton({required this.isOn, required this.onTap});
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 350),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: isOn
+          ? const LinearGradient(colors: [Color(0xFF00C853), Color(0xFF1B5E20)])
+          : LinearGradient(colors: [Colors.white.withValues(alpha: 0.12), Colors.white.withValues(alpha: 0.05)]),
+        border: Border.all(
+          color: isOn ? Colors.greenAccent.withValues(alpha: 0.7) : Colors.white.withValues(alpha: 0.25),
+          width: 1.5,
         ),
       ),
-    );
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Row(children: [
+          Icon(isOn ? Icons.lock : Icons.lock_open, color: Colors.white, size: 26),
+          const SizedBox(width: 12),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(isOn ? '防犯モード ON' : '防犯モード OFF',
+              style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+            Text(isOn ? 'タップして無効化' : 'タップして有効化',
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.65), fontSize: 11)),
+          ]),
+        ]),
+        Switch(
+          value: isOn, onChanged: (_) => onTap(),
+          activeThumbColor: Colors.white,
+          activeTrackColor: Colors.greenAccent.withValues(alpha: 0.5),
+          inactiveThumbColor: Colors.white60,
+          inactiveTrackColor: Colors.white24,
+        ),
+      ]),
+    ),
+  );
+}
+
+// ── 感度スライダー ────────────────────────────
+class _SensSlider extends StatelessWidget {
+  final double value;
+  final ValueChanged<double> onChange;
+  const _SensSlider({required this.value, required this.onChange});
+
+  // 表示値は反転（右=高感度）
+  double get _disp => 3.5 - value;
+
+  String get _label {
+    if (value <= 0.8) return '最高感度';
+    if (value <= 1.2) return '高感度';
+    if (value <= 1.8) return '標準';
+    if (value <= 2.4) return '低感度';
+    return '最低感度';
   }
 
-  Widget _buildInfoCard() {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+  @override
+  Widget build(BuildContext context) => _Card(child: Column(children: [
+    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+      Row(children: [
+        Icon(Icons.tune, color: Colors.white.withValues(alpha: 0.85), size: 18),
+        const SizedBox(width: 8),
+        Text('検知感度', style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 14, fontWeight: FontWeight.w600)),
+      ]),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
+        child: Text(_label, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.info_outline,
-                  color: Colors.white.withValues(alpha: 0.8), size: 16),
-              const SizedBox(width: 6),
-              Text(
-                '使い方',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.9),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
+    ]),
+    const SizedBox(height: 8),
+    SliderTheme(
+      data: SliderThemeData(
+        activeTrackColor: Colors.orangeAccent,
+        inactiveTrackColor: Colors.white.withValues(alpha: 0.2),
+        thumbColor: Colors.white,
+        overlayColor: Colors.orangeAccent.withValues(alpha: 0.2),
+        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
+        trackHeight: 6,
+      ),
+      child: Slider(
+        value: _disp, min: 0.5, max: 3.0, divisions: 25,
+        onChanged: (v) => onChange(3.5 - v),
+      ),
+    ),
+    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+      Text('低感度', style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11)),
+      Text('高感度', style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11)),
+    ]),
+    const SizedBox(height: 4),
+    Text('閾値: ${value.toStringAsFixed(1)} m/s²', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11)),
+  ]));
+}
+
+// ── 振動センサー表示 ──────────────────────────
+class _SensorDisplay extends StatelessWidget {
+  final AppState s;
+  const _SensorDisplay({required this.s});
+  @override
+  Widget build(BuildContext context) {
+    final ratio = (s.currentDelta / (s.sensitivity * 2)).clamp(0.0, 1.0);
+    return _Card(child: Column(children: [
+      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(Icons.sensors, color: Colors.white.withValues(alpha: 0.8), size: 16),
+        const SizedBox(width: 6),
+        Text('振動センサー', style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 13)),
+      ]),
+      const SizedBox(height: 10),
+      Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+        SizedBox(width: 32, height: 64,
+          child: Stack(children: [
+            Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), color: Colors.white.withValues(alpha: 0.1))),
+            Align(alignment: Alignment.bottomCenter,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 80),
+                width: 32, height: 64 * ratio,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(6),
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter, end: Alignment.topCenter,
+                    colors: [Colors.greenAccent, ratio > 0.7 ? Colors.redAccent : Colors.orangeAccent],
+                  ),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _buildInfoRow(Icons.toggle_on_outlined, '盗難防止モードをONにして起動'),
-          _buildInfoRow(Icons.phone_android, 'スマホを置いてその場を離れる'),
-          _buildInfoRow(Icons.vibration, '動きを検知すると自動でアラーム発動'),
-          _buildInfoRow(Icons.volume_up, '3秒ごとに音量が段階的に増加（5段階）'),
-          _buildInfoRow(Icons.stop_circle_outlined, 'アラーム停止ボタンで解除'),
-          _buildInfoRow(Icons.music_note, '▶️ボタンで試し聴き後、好みの音を選択'),
-        ],
-      ),
-    );
+            ),
+          ]),
+        ),
+        Column(children: [
+          Text(s.currentDelta.toStringAsFixed(2), style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+          Text('m/s²', style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12)),
+          const SizedBox(height: 4),
+          Text('閾値 ${s.sensitivity.toStringAsFixed(1)}', style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 11)),
+        ]),
+      ]),
+    ]));
+  }
+}
+
+// ── サウンドテストパネル ──────────────────────
+class _SoundPanel extends StatefulWidget {
+  final AlarmService svc;
+  const _SoundPanel({required this.svc});
+  @override
+  State<_SoundPanel> createState() => _SoundPanelState();
+}
+
+class _SoundPanelState extends State<_SoundPanel> {
+  int _playing = -1;
+
+  void _play(int i) {
+    widget.svc.playTest(i);
+    setState(() => _playing = i);
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _playing = -1);
+    });
   }
 
-  Widget _buildInfoRow(IconData icon, String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.white.withValues(alpha: 0.65), size: 14),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.7),
-                fontSize: 11,
+  @override
+  Widget build(BuildContext context) {
+    final sel = widget.svc.state.selectedSound;
+    return _Card(child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          Icon(Icons.music_note, color: Colors.white.withValues(alpha: 0.85), size: 18),
+          const SizedBox(width: 8),
+          Text('アラーム音テスト（5種類）',
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 14, fontWeight: FontWeight.bold)),
+        ]),
+        const SizedBox(height: 4),
+        Text('▶️ を押して試し聴き → ラジオボタンで選択',
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 11)),
+        const SizedBox(height: 12),
+        ...List.generate(AlarmService.sounds.length, (i) {
+          final isOn = sel == i;
+          final isPlaying = _playing == i;
+          return GestureDetector(
+            onTap: () => widget.svc.selectSound(i),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: isOn ? Colors.orangeAccent.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.05),
+                border: Border.all(
+                  color: isOn ? Colors.orangeAccent.withValues(alpha: 0.7) : Colors.white.withValues(alpha: 0.15),
+                  width: isOn ? 1.5 : 1,
+                ),
               ),
+              child: Row(children: [
+                // ラジオ
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: 18, height: 18,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: isOn ? Colors.orangeAccent : Colors.white38, width: 2),
+                    color: isOn ? Colors.orangeAccent : Colors.transparent,
+                  ),
+                  child: isOn ? const Icon(Icons.check, size: 11, color: Colors.white) : null,
+                ),
+                const SizedBox(width: 10),
+                // テキスト
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(AlarmService.sounds[i]['name']!,
+                    style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: isOn ? FontWeight.bold : FontWeight.normal)),
+                  Text(AlarmService.sounds[i]['desc']!,
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 10)),
+                ])),
+                // 再生ボタン
+                GestureDetector(
+                  onTap: () => _play(i),
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    padding: const EdgeInsets.all(7),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isPlaying ? Colors.greenAccent.withValues(alpha: 0.3) : Colors.white.withValues(alpha: 0.15),
+                    ),
+                    child: Icon(
+                      isPlaying ? Icons.volume_up : Icons.play_arrow,
+                      color: isPlaying ? Colors.greenAccent : Colors.white,
+                      size: 18,
+                    ),
+                  ),
+                ),
+              ]),
             ),
+          );
+        }),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.orangeAccent.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.35)),
           ),
-        ],
-      ),
-    );
+          child: const Row(children: [
+            Icon(Icons.info_outline, color: Colors.orangeAccent, size: 14),
+            SizedBox(width: 8),
+            Expanded(child: Text('選択した音がアラーム発動時に使用されます',
+              style: TextStyle(color: Colors.orangeAccent, fontSize: 11))),
+          ]),
+        ),
+      ],
+    ));
   }
+}
+
+// ── 使い方カード ──────────────────────────────
+class _InfoCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) => _Card(child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(children: [
+        Icon(Icons.info_outline, color: Colors.white.withValues(alpha: 0.8), size: 16),
+        const SizedBox(width: 6),
+        Text('使い方', style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 13, fontWeight: FontWeight.bold)),
+      ]),
+      const SizedBox(height: 8),
+      _row(Icons.toggle_on_outlined,  '防犯モードをONにして起動'),
+      _row(Icons.phone_android,       'スマホを置いてその場を離れる'),
+      _row(Icons.vibration,           '動きを検知→自動でアラーム発動'),
+      _row(Icons.volume_up,           '3秒ごとに音量が5段階で増加'),
+      _row(Icons.stop_circle_outlined,'停止ボタンでアラームを解除'),
+      _row(Icons.music_note,          '▶️ボタンで試し聴き→好みの音を選択'),
+    ],
+  ));
+
+  Widget _row(IconData icon, String text) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 2),
+    child: Row(children: [
+      Icon(icon, color: Colors.white.withValues(alpha: 0.6), size: 14),
+      const SizedBox(width: 6),
+      Expanded(child: Text(text, style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 11))),
+    ]),
+  );
+}
+
+// ── 共通カード ────────────────────────────────
+class _Card extends StatelessWidget {
+  final Widget child;
+  const _Card({required this.child});
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+    ),
+    child: child,
+  );
 }

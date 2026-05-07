@@ -37,20 +37,30 @@
 
   <script>
   // ============================================================
-  //  Secure Alarm - Web Audio Engine
-  //  Flutter の dart:js_util から window.secureAlarmPlay/Stop を呼ぶ
+  //  Secure Alarm - Web Audio Engine v3
+  //  Flutter の dart:js_util から window.saPlay / window.saStop を呼ぶ
+  //  ※ 関数名は必ず saPlay / saStop にすること（alarm_service.dart と一致）
   // ============================================================
   (function() {
+    'use strict';
+
     var _audioCtx = null;
     var _activeNodes = [];
 
     // AudioContext を取得（suspended なら resume）
-    function _ctx() {
+    function _getCtx() {
       if (!_audioCtx || _audioCtx.state === 'closed') {
-        _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        try {
+          _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        } catch(e) {
+          console.error('[SecureAlarm] AudioContext creation failed:', e);
+          return null;
+        }
       }
       if (_audioCtx.state === 'suspended') {
-        _audioCtx.resume();
+        _audioCtx.resume().catch(function(e) {
+          console.warn('[SecureAlarm] resume failed:', e);
+        });
       }
       return _audioCtx;
     }
@@ -64,9 +74,8 @@
       _activeNodes = [];
     }
 
-    // ユーティリティ：オシレータ＋ゲインを作成して接続
-    function _makeOscGain(type, freq, gainVal, startTime, endTime) {
-      var ctx = _ctx();
+    // オシレータ+ゲインを作成
+    function _makeOsc(ctx, type, freq, gainVal, startTime, endTime) {
       var g = ctx.createGain();
       g.gain.setValueAtTime(gainVal, startTime);
       g.connect(ctx.destination);
@@ -84,7 +93,8 @@
     //  Sound 0: 緊急サイレン（440→880→440 のこぎり波）
     // ----------------------------------------------------------
     function _playSiren(vol) {
-      var ctx = _ctx();
+      var ctx = _getCtx();
+      if (!ctx) return;
       var now = ctx.currentTime;
       var g = ctx.createGain();
       g.gain.setValueAtTime(vol * 0.8, now);
@@ -105,7 +115,8 @@
     //  Sound 1: 電子ビープ（1200Hz 矩形波 × 5回）
     // ----------------------------------------------------------
     function _playBeeps(vol) {
-      var ctx = _ctx();
+      var ctx = _getCtx();
+      if (!ctx) return;
       var now = ctx.currentTime;
       for (var i = 0; i < 5; i++) {
         var t = now + i * 0.22;
@@ -128,7 +139,8 @@
     //  Sound 2: 警告ブザー（220Hz 断続3回）
     // ----------------------------------------------------------
     function _playBuzzer(vol) {
-      var ctx = _ctx();
+      var ctx = _getCtx();
+      if (!ctx) return;
       var now = ctx.currentTime;
       [[0, 0.28], [0.4, 0.68], [0.8, 1.08]].forEach(function(pair) {
         var t0 = now + pair[0], t1 = now + pair[1];
@@ -150,7 +162,8 @@
     //  Sound 3: 高音アラーム（2400+3200Hz 上昇）
     // ----------------------------------------------------------
     function _playHighAlarm(vol) {
-      var ctx = _ctx();
+      var ctx = _getCtx();
+      if (!ctx) return;
       var now = ctx.currentTime;
       [2400, 3200].forEach(function(freq) {
         var g = ctx.createGain();
@@ -173,7 +186,8 @@
     //  Sound 4: 爆発的警報（低音ベース＋3音重ねビープ）
     // ----------------------------------------------------------
     function _playExplosive(vol) {
-      var ctx = _ctx();
+      var ctx = _getCtx();
+      if (!ctx) return;
       var now = ctx.currentTime;
       // 低音ドン
       var bg = ctx.createGain();
@@ -206,11 +220,13 @@
 
     // ----------------------------------------------------------
     //  グローバル公開関数（dart:js_util から呼ばれる）
+    //  名前: saPlay / saStop （alarm_service.dart と一致させること）
     // ----------------------------------------------------------
-    window.secureAlarmPlay = function(soundType, volume) {
+    window.saPlay = function(soundType, volume) {
       _stopAll();
       var vol = Math.min(1.0, Math.max(0.05, parseFloat(volume) || 0.7));
       var type = parseInt(soundType) || 0;
+      console.log('[SecureAlarm] saPlay type=' + type + ' vol=' + vol);
       switch (type) {
         case 0: _playSiren(vol);      break;
         case 1: _playBeeps(vol);      break;
@@ -219,15 +235,14 @@
         case 4: _playExplosive(vol);  break;
         default: _playSiren(vol);
       }
-      console.log('[SecureAlarm] play soundType=' + type + ' vol=' + vol);
     };
 
-    window.secureAlarmStop = function() {
+    window.saStop = function() {
       _stopAll();
-      console.log('[SecureAlarm] stop');
+      console.log('[SecureAlarm] saStop');
     };
 
-    console.log('[SecureAlarm] Audio Engine ready ✅');
+    console.log('[SecureAlarm] Audio Engine v3 ready ✅ (saPlay / saStop)');
   })();
   </script>
 

@@ -6,22 +6,16 @@ import 'screens/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
-    ),
-  );
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light,
+  ));
   runApp(const SecureAlarmApp());
 }
 
 class SecureAlarmApp extends StatelessWidget {
   const SecureAlarmApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
@@ -35,7 +29,6 @@ class SecureAlarmApp extends StatelessWidget {
             brightness: Brightness.dark,
           ),
           useMaterial3: true,
-          fontFamily: 'Roboto',
         ),
         home: const HomeScreen(),
       ),

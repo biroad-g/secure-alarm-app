@@ -1,22 +1,8 @@
-// 盗難防止アプリの状態モデル
-
-enum AlarmStatus {
-  standby,    // 待機中（モードOFF）
-  monitoring, // 監視中（モードON、静止）
-  detected,   // 振動検知中
-  alarming,   // アラーム鳴動中
-}
+enum AlarmStatus { standby, monitoring, alarming }
 
 enum AlarmLevel {
-  none,    // レベル0（無音）
-  level1,  // レベル1（小）
-  level2,  // レベル2（中小）
-  level3,  // レベル3（中）
-  level4,  // レベル4（大）
-  level5,  // レベル5（最大）
-}
+  none, level1, level2, level3, level4, level5;
 
-extension AlarmLevelExtension on AlarmLevel {
   double get volume {
     switch (this) {
       case AlarmLevel.none:   return 0.0;
@@ -28,7 +14,7 @@ extension AlarmLevelExtension on AlarmLevel {
     }
   }
 
-  int get index2 {
+  int get step {
     switch (this) {
       case AlarmLevel.none:   return 0;
       case AlarmLevel.level1: return 1;
@@ -41,44 +27,56 @@ extension AlarmLevelExtension on AlarmLevel {
 
   String get label {
     switch (this) {
-      case AlarmLevel.none:   return '停止';
-      case AlarmLevel.level1: return 'レベル1';
+      case AlarmLevel.none:   return '待機中';
+      case AlarmLevel.level1: return 'レベル1（小）';
       case AlarmLevel.level2: return 'レベル2';
-      case AlarmLevel.level3: return 'レベル3';
+      case AlarmLevel.level3: return 'レベル3（中）';
       case AlarmLevel.level4: return 'レベル4';
       case AlarmLevel.level5: return 'レベル5（最大）';
     }
   }
+
+  AlarmLevel get next {
+    switch (this) {
+      case AlarmLevel.none:   return AlarmLevel.level1;
+      case AlarmLevel.level1: return AlarmLevel.level2;
+      case AlarmLevel.level2: return AlarmLevel.level3;
+      case AlarmLevel.level3: return AlarmLevel.level4;
+      case AlarmLevel.level4: return AlarmLevel.level5;
+      case AlarmLevel.level5: return AlarmLevel.level5;
+    }
+  }
 }
 
-class AlarmStateModel {
+class AppState {
   final AlarmStatus status;
   final AlarmLevel level;
-  final double sensitivity; // 0.5 〜 3.0 (加速度の閾値)
-  final bool isProtectionEnabled;
-  final double currentAcceleration;
+  final double sensitivity;  // 0.5=高感度 〜 3.0=低感度
+  final double currentDelta;
+  final int selectedSound;   // 0〜4
 
-  const AlarmStateModel({
+  const AppState({
     this.status = AlarmStatus.standby,
     this.level = AlarmLevel.none,
-    this.sensitivity = 1.0,
-    this.isProtectionEnabled = false,
-    this.currentAcceleration = 0.0,
+    this.sensitivity = 1.2,
+    this.currentDelta = 0.0,
+    this.selectedSound = 0,
   });
 
-  AlarmStateModel copyWith({
+  AppState copyWith({
     AlarmStatus? status,
     AlarmLevel? level,
     double? sensitivity,
-    bool? isProtectionEnabled,
-    double? currentAcceleration,
-  }) {
-    return AlarmStateModel(
-      status: status ?? this.status,
-      level: level ?? this.level,
-      sensitivity: sensitivity ?? this.sensitivity,
-      isProtectionEnabled: isProtectionEnabled ?? this.isProtectionEnabled,
-      currentAcceleration: currentAcceleration ?? this.currentAcceleration,
-    );
-  }
+    double? currentDelta,
+    int? selectedSound,
+  }) => AppState(
+    status: status ?? this.status,
+    level: level ?? this.level,
+    sensitivity: sensitivity ?? this.sensitivity,
+    currentDelta: currentDelta ?? this.currentDelta,
+    selectedSound: selectedSound ?? this.selectedSound,
+  );
+
+  bool get isActive => status != AlarmStatus.standby;
+  bool get isAlarming => status == AlarmStatus.alarming;
 }
