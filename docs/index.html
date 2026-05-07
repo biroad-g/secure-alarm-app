@@ -4,7 +4,6 @@
   <base href="/">
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="Secure Alarm - スマートフォン盗難防止アプリ">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -15,233 +14,193 @@
   <title>Secure Alarm</title>
   <link rel="manifest" href="manifest.json">
   <style>
-    body { margin:0; padding:0; background-color:#4A148C; overflow:hidden; }
+    body { margin:0; padding:0; background:#4A148C; overflow:hidden; }
     #loading {
       display:flex; justify-content:center; align-items:center;
-      height:100vh; flex-direction:column; color:white; font-family:sans-serif;
+      height:100vh; flex-direction:column; color:#fff; font-family:sans-serif;
     }
-    .spinner {
-      width:48px; height:48px;
-      border:5px solid rgba(255,255,255,0.3);
-      border-top-color:white; border-radius:50%;
-      animation:spin 0.8s linear infinite; margin-bottom:16px;
-    }
+    .sp { width:48px; height:48px; border:5px solid rgba(255,255,255,.3);
+      border-top-color:#fff; border-radius:50%; animation:spin .8s linear infinite; margin-bottom:16px; }
     @keyframes spin { to { transform:rotate(360deg); } }
   </style>
 </head>
 <body>
-  <div id="loading">
-    <div class="spinner"></div>
-    <p>Secure Alarm 読み込み中...</p>
-  </div>
+<div id="loading"><div class="sp"></div><p>Secure Alarm 読み込み中...</p></div>
 
-  <script>
-  // ============================================================
-  //  Secure Alarm Web Engine v5
-  //  Dart から呼ぶ関数:
-  //    saPlay(type, vol)            音声再生
-  //    saStop()                     音声停止
-  //    saSetCallbacks(onTrigger, onUpdate)  Dartコールバック登録
-  //    saStartMotion()              センサー開始
-  //    saStopMotion()               センサー停止
-  // ============================================================
-  (function() {
-    'use strict';
+<script>
+/* ================================================================
+   Secure Alarm — Web Engine v5
+   window.saPlay(type, vol)
+   window.saStop()
+   window.saStartSensor(sensitivity, onAlarmCb, onDeltaCb)
+   window.saStopSensor()
+================================================================ */
+(function(){
+'use strict';
 
-    // ============================================================
-    //  1. 音声エンジン
-    // ============================================================
-    var _actx = null;
-    var _nodes = [];
+/* ---------- AudioContext ---------- */
+var _ac = null;
+var _nodes = [];
 
-    function _ctx() {
-      if (!_actx || _actx.state === 'closed') {
-        try { _actx = new (window.AudioContext || window.webkitAudioContext)(); }
-        catch(e) { console.error('[SA] AudioContext error:', e); return null; }
-      }
-      if (_actx.state === 'suspended') _actx.resume();
-      return _actx;
-    }
-    function _stopNodes() {
-      _nodes.forEach(function(n){try{n.stop(0);}catch(e){}try{n.disconnect();}catch(e){}});
-      _nodes=[];
-    }
-    function _osc(ctx,type,freq,gainVal,t0,t1){
-      var g=ctx.createGain(); g.gain.setValueAtTime(gainVal,t0); g.connect(ctx.destination);
-      var o=ctx.createOscillator(); o.type=type; o.frequency.setValueAtTime(freq,t0);
-      o.connect(g); o.start(t0); o.stop(t1); _nodes.push(o); return {o:o,g:g};
-    }
-    function _playSiren(v){
-      var c=_ctx(); if(!c)return; var n=c.currentTime;
-      var g=c.createGain(); g.gain.setValueAtTime(v*.8,n); g.connect(c.destination);
-      var o=c.createOscillator(); o.type='sawtooth';
-      o.frequency.setValueAtTime(440,n);
-      o.frequency.linearRampToValueAtTime(880,n+.6);
-      o.frequency.linearRampToValueAtTime(440,n+1.2);
-      o.frequency.linearRampToValueAtTime(880,n+1.8);
-      o.connect(g); o.start(n); o.stop(n+1.8); _nodes.push(o);
-    }
-    function _playBeeps(v){
-      var c=_ctx(); if(!c)return; var n=c.currentTime;
-      for(var i=0;i<5;i++){
-        var t=n+i*.22, g=c.createGain();
-        g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(v,t+.01); g.gain.linearRampToValueAtTime(0,t+.14);
-        g.connect(c.destination);
-        var o=c.createOscillator(); o.type='square'; o.frequency.setValueAtTime(1200,t);
-        o.connect(g); o.start(t); o.stop(t+.16); _nodes.push(o);
-      }
-    }
-    function _playBuzzer(v){
-      var c=_ctx(); if(!c)return; var n=c.currentTime;
-      [[0,.28],[.4,.68],[.8,1.08]].forEach(function(p){
-        var g=c.createGain(); g.gain.setValueAtTime(v*.9,n+p[0]); g.gain.setValueAtTime(0,n+p[1]);
-        g.connect(c.destination);
-        var o=c.createOscillator(); o.type='sawtooth'; o.frequency.setValueAtTime(220,n+p[0]);
-        o.connect(g); o.start(n+p[0]); o.stop(n+p[1]+.01); _nodes.push(o);
-      });
-    }
-    function _playHigh(v){
-      var c=_ctx(); if(!c)return; var n=c.currentTime;
-      [2400,3200].forEach(function(f){
-        var g=c.createGain(); g.gain.setValueAtTime(v*.55,n); g.gain.exponentialRampToValueAtTime(.001,n+1.4);
-        g.connect(c.destination);
-        var o=c.createOscillator(); o.type='sine';
-        o.frequency.setValueAtTime(f,n); o.frequency.linearRampToValueAtTime(f*1.6,n+.7); o.frequency.linearRampToValueAtTime(f,n+1.4);
-        o.connect(g); o.start(n); o.stop(n+1.4); _nodes.push(o);
-      });
-    }
-    function _playExplosive(v){
-      var c=_ctx(); if(!c)return; var n=c.currentTime;
-      var bg=c.createGain(); bg.gain.setValueAtTime(v*.7,n); bg.gain.exponentialRampToValueAtTime(.001,n+.45);
-      bg.connect(c.destination);
-      var bo=c.createOscillator(); bo.type='square'; bo.frequency.setValueAtTime(120,n);
-      bo.connect(bg); bo.start(n); bo.stop(n+.46); _nodes.push(bo);
-      [880,1760,2640].forEach(function(f,i){
-        var t=n+i*.18, g=c.createGain();
-        g.gain.setValueAtTime(v*.55,t); g.gain.exponentialRampToValueAtTime(.001,t+.3);
-        g.connect(c.destination);
-        var o=c.createOscillator(); o.type='square'; o.frequency.setValueAtTime(f,t);
-        o.connect(g); o.start(t); o.stop(t+.32); _nodes.push(o);
-      });
-    }
-    window.saPlay = function(type, vol) {
-      _stopNodes();
-      var v=Math.min(1,Math.max(.05,parseFloat(vol)||.7));
-      var t=parseInt(type)||0;
-      console.log('[SA] play type='+t+' vol='+v.toFixed(2));
-      switch(t){case 0:_playSiren(v);break;case 1:_playBeeps(v);break;case 2:_playBuzzer(v);break;case 3:_playHigh(v);break;case 4:_playExplosive(v);break;default:_playSiren(v);}
-    };
-    window.saStop = function() { _stopNodes(); };
+function ctx(){
+  if(!_ac || _ac.state==='closed'){
+    try{ _ac=new(window.AudioContext||window.webkitAudioContext)(); }catch(e){ return null; }
+  }
+  if(_ac.state==='suspended') _ac.resume();
+  return _ac;
+}
+function stopNodes(){
+  _nodes.forEach(function(n){ try{n.stop(0);}catch(e){} try{n.disconnect();}catch(e){} });
+  _nodes=[];
+}
+function osc(c,type,freq,g,t0,t1){
+  var gn=c.createGain(); gn.gain.setValueAtTime(g,t0); gn.connect(c.destination);
+  var o=c.createOscillator(); o.type=type; o.frequency.setValueAtTime(freq,t0);
+  o.connect(gn); o.start(t0); o.stop(t1); _nodes.push(o);
+  return {o:o,g:gn};
+}
 
-    // ============================================================
-    //  2. センサーエンジン
-    //     Dart から saSetCallbacks() でコールバックを登録し
-    //     saStartMotion() / saStopMotion() で制御する
-    // ============================================================
-    var _cbTrigger = null;  // onMotionTriggered(delta)
-    var _cbUpdate  = null;  // onDeltaUpdate(delta)
-    var _motionActive = false;
-    var _prevX=null, _prevY=null, _prevZ=null;
-    var _updateInterval = null;
-    var _lastDelta = 0;
+function playSiren(v){ var c=ctx();if(!c)return; var n=c.currentTime;
+  var gn=c.createGain(); gn.gain.setValueAtTime(v*.8,n); gn.connect(c.destination);
+  var o=c.createOscillator(); o.type='sawtooth';
+  o.frequency.setValueAtTime(440,n);
+  o.frequency.linearRampToValueAtTime(880,n+.6);
+  o.frequency.linearRampToValueAtTime(440,n+1.2);
+  o.frequency.linearRampToValueAtTime(880,n+1.8);
+  o.connect(gn); o.start(n); o.stop(n+1.8); _nodes.push(o); }
 
-    // Dart側から登録される
-    window.saSetCallbacks = function(onTrigger, onUpdate) {
-      _cbTrigger = onTrigger;
-      _cbUpdate  = onUpdate;
-      console.log('[SA] callbacks registered');
-    };
+function playBeep(v){ var c=ctx();if(!c)return; var n=c.currentTime;
+  for(var i=0;i<5;i++){ var t=n+i*.22;
+    var gn=c.createGain(); gn.gain.setValueAtTime(0,t);
+    gn.gain.linearRampToValueAtTime(v,t+.01); gn.gain.linearRampToValueAtTime(0,t+.14);
+    gn.connect(c.destination);
+    var o=c.createOscillator(); o.type='square'; o.frequency.setValueAtTime(1200,t);
+    o.connect(gn); o.start(t); o.stop(t+.16); _nodes.push(o); } }
 
-    // DeviceMotionイベントハンドラ
-    function _onMotion(e) {
-      var a = e.accelerationIncludingGravity || e.acceleration;
-      if (!a) return;
-      var x = a.x||0, y = a.y||0, z = a.z||0;
-      if (_prevX === null) { _prevX=x; _prevY=y; _prevZ=z; return; }
-      var dx=x-_prevX, dy=y-_prevY, dz=z-_prevZ;
-      var delta = Math.sqrt(dx*dx+dy*dy+dz*dz);
-      _prevX=x; _prevY=y; _prevZ=z;
-      _lastDelta = delta;
-    }
+function playBuzz(v){ var c=ctx();if(!c)return; var n=c.currentTime;
+  [[0,.28],[.4,.68],[.8,1.08]].forEach(function(p){
+    var gn=c.createGain(); gn.gain.setValueAtTime(v*.9,n+p[0]); gn.gain.setValueAtTime(0,n+p[1]);
+    gn.connect(c.destination);
+    var o=c.createOscillator(); o.type='sawtooth'; o.frequency.setValueAtTime(220,n+p[0]);
+    o.connect(gn); o.start(n+p[0]); o.stop(n+p[1]+.01); _nodes.push(o); }); }
 
-    // 100msごとにDartへデルタ値を送る（UI更新 + 閾値判定はDart側）
-    function _startUpdateLoop() {
-      if (_updateInterval) clearInterval(_updateInterval);
-      _updateInterval = setInterval(function() {
-        if (!_motionActive) return;
-        var d = _lastDelta;
-        _lastDelta = 0; // リセット
-        if (_cbUpdate) {
-          try { _cbUpdate(d); } catch(e) { console.warn('[SA] cbUpdate error:', e); }
+function playHigh(v){ var c=ctx();if(!c)return; var n=c.currentTime;
+  [2400,3200].forEach(function(f){
+    var gn=c.createGain(); gn.gain.setValueAtTime(v*.55,n); gn.gain.exponentialRampToValueAtTime(.001,n+1.4);
+    gn.connect(c.destination);
+    var o=c.createOscillator(); o.type='sine'; o.frequency.setValueAtTime(f,n);
+    o.frequency.linearRampToValueAtTime(f*1.6,n+.7); o.frequency.linearRampToValueAtTime(f,n+1.4);
+    o.connect(gn); o.start(n); o.stop(n+1.4); _nodes.push(o); }); }
+
+function playExp(v){ var c=ctx();if(!c)return; var n=c.currentTime;
+  var bg=c.createGain(); bg.gain.setValueAtTime(v*.7,n); bg.gain.exponentialRampToValueAtTime(.001,n+.45);
+  bg.connect(c.destination);
+  var bo=c.createOscillator(); bo.type='square'; bo.frequency.setValueAtTime(120,n);
+  bo.connect(bg); bo.start(n); bo.stop(n+.46); _nodes.push(bo);
+  [880,1760,2640].forEach(function(f,i){ var t=n+i*.18;
+    var gn=c.createGain(); gn.gain.setValueAtTime(v*.55,t); gn.gain.exponentialRampToValueAtTime(.001,t+.3);
+    gn.connect(c.destination);
+    var o=c.createOscillator(); o.type='square'; o.frequency.setValueAtTime(f,t);
+    o.connect(gn); o.start(t); o.stop(t+.32); _nodes.push(o); }); }
+
+window.saPlay=function(type,vol){
+  stopNodes();
+  var v=Math.min(1,Math.max(.05,parseFloat(vol)||.7));
+  var t=parseInt(type)||0;
+  console.log('[SA] play type='+t+' vol='+v.toFixed(2));
+  switch(t){ case 0:playSiren(v);break; case 1:playBeep(v);break;
+    case 2:playBuzz(v);break; case 3:playHigh(v);break; case 4:playExp(v);break;
+    default:playSiren(v); }
+};
+window.saStop=function(){ stopNodes(); };
+
+/* ---------- Motion Sensor ---------- */
+var _onAlarm=null, _onDelta=null;
+var _sensitivity=1.2;
+var _px=0,_py=0,_pz=0,_first=true;
+var _listening=false;
+var _cooldown=false;
+
+/* 加速度デルタを計算してコールバックを呼ぶ */
+function handleAccel(ax,ay,az){
+  if(_first){ _px=ax;_py=ay;_pz=az;_first=false; return; }
+  var dx=ax-_px, dy=ay-_py, dz=az-_pz;
+  var delta=Math.sqrt(dx*dx+dy*dy+dz*dz);
+  _px=ax; _py=ay; _pz=az;
+
+  if(_onDelta) try{ _onDelta(delta); }catch(e){}
+
+  if(!_cooldown && delta>_sensitivity && _onAlarm){
+    _cooldown=true;
+    setTimeout(function(){ _cooldown=false; },2000);
+    try{ _onAlarm(delta); }catch(e){}
+    console.log('[SA] alarm! delta='+delta.toFixed(2)+' thr='+_sensitivity);
+  }
+}
+
+/* DeviceMotion ハンドラ */
+function onDeviceMotion(e){
+  var a=e.accelerationIncludingGravity||e.acceleration;
+  if(!a) return;
+  handleAccel(a.x||0, a.y||0, a.z||0);
+}
+
+/* マウス移動フォールバック（PC確認用） */
+var _mx=-1,_my=-1;
+document.addEventListener('mousemove',function(e){
+  if(_mx<0){_mx=e.clientX;_my=e.clientY;return;}
+  var dx=e.clientX-_mx, dy=e.clientY-_my;
+  /* マウス移動をm/s²相当にスケーリング */
+  var delta=Math.sqrt(dx*dx+dy*dy)*0.08;
+  _mx=e.clientX; _my=e.clientY;
+  if(_listening) handleAccel(delta,0,9.8);
+},true);
+/* タッチ移動 */
+document.addEventListener('touchmove',function(e){
+  var t=e.touches[0]; if(!t) return;
+  if(_mx<0){_mx=t.clientX;_my=t.clientY;return;}
+  var dx=t.clientX-_mx, dy=t.clientY-_my;
+  var delta=Math.sqrt(dx*dx+dy*dy)*0.08;
+  _mx=t.clientX; _my=t.clientY;
+  if(_listening) handleAccel(delta,0,9.8);
+},true);
+
+window.saStartSensor=function(sensitivity, onAlarmCb, onDeltaCb){
+  _sensitivity=parseFloat(sensitivity)||1.2;
+  _onAlarm=onAlarmCb;
+  _onDelta=onDeltaCb;
+  _first=true; _listening=true;
+  _mx=-1; _my=-1;
+
+  /* DeviceMotion: iOS13+ は requestPermission が必要 */
+  if(typeof DeviceMotionEvent!=='undefined'){
+    if(typeof DeviceMotionEvent.requestPermission==='function'){
+      DeviceMotionEvent.requestPermission().then(function(r){
+        if(r==='granted'){
+          window.addEventListener('devicemotion',onDeviceMotion,true);
+          console.log('[SA] DeviceMotion granted (iOS)');
         }
-      }, 100);
+      }).catch(function(e){ console.warn('[SA] permission error:',e); });
+    } else {
+      window.addEventListener('devicemotion',onDeviceMotion,true);
+      console.log('[SA] DeviceMotion started');
     }
+  } else {
+    console.log('[SA] DeviceMotion not supported, using mouse/touch fallback');
+  }
+};
 
-    window.saStartMotion = function() {
-      if (_motionActive) return;
-      _motionActive = true;
-      _prevX=null; _prevY=null; _prevZ=null;
-      _lastDelta=0;
+window.saStopSensor=function(){
+  _listening=false;
+  _onAlarm=null; _onDelta=null;
+  window.removeEventListener('devicemotion',onDeviceMotion,true);
+  console.log('[SA] sensor stopped');
+};
 
-      if (typeof DeviceMotionEvent === 'undefined') {
-        console.log('[SA] DeviceMotionEvent not supported');
-        _startUpdateLoop(); // マウス/タッチ代替のためループだけ回す
-        return;
-      }
+console.log('[SA] Engine v5 ready');
+})();
+</script>
 
-      // iOS13+は許可が必要
-      if (typeof DeviceMotionEvent.requestPermission === 'function') {
-        DeviceMotionEvent.requestPermission()
-          .then(function(res) {
-            if (res === 'granted') {
-              window.addEventListener('devicemotion', _onMotion, true);
-              console.log('[SA] DeviceMotion granted (iOS)');
-            } else {
-              console.warn('[SA] DeviceMotion denied');
-            }
-          }).catch(function(e){ console.error('[SA] requestPermission:', e); });
-      } else {
-        window.addEventListener('devicemotion', _onMotion, true);
-        console.log('[SA] DeviceMotion started');
-      }
-      _startUpdateLoop();
-    };
-
-    window.saStopMotion = function() {
-      _motionActive = false;
-      window.removeEventListener('devicemotion', _onMotion, true);
-      if (_updateInterval) { clearInterval(_updateInterval); _updateInterval=null; }
-      _prevX=null; _prevY=null; _prevZ=null; _lastDelta=0;
-      console.log('[SA] motion stopped');
-    };
-
-    // ============================================================
-    //  3. マウス/タッチ移動でデルタを補完（PCブラウザ用）
-    // ============================================================
-    var _mx=-1,_my=-1;
-    function _onMouseMove(e) {
-      if(_mx<0){_mx=e.clientX;_my=e.clientY;return;}
-      var dx=e.clientX-_mx, dy=e.clientY-_my;
-      var d=Math.sqrt(dx*dx+dy*dy)*0.25;
-      if(d>_lastDelta) _lastDelta=d; // 大きい方を保持
-      _mx=e.clientX; _my=e.clientY;
-    }
-    function _onTouchMove(e) {
-      if(e.touches.length<1)return;
-      var t=e.touches[0];
-      if(_mx<0){_mx=t.clientX;_my=t.clientY;return;}
-      var dx=t.clientX-_mx, dy=t.clientY-_my;
-      var d=Math.sqrt(dx*dx+dy*dy)*0.25;
-      if(d>_lastDelta) _lastDelta=d;
-      _mx=t.clientX; _my=t.clientY;
-    }
-    window.addEventListener('mousemove', _onMouseMove, {passive:true});
-    window.addEventListener('touchmove', _onTouchMove, {passive:true});
-
-    console.log('[SA] Engine v5 ready ✅');
-  })();
-  </script>
-
-  <script src="flutter_bootstrap.js" async></script>
+<script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
