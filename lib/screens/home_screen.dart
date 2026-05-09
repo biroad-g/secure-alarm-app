@@ -366,13 +366,14 @@ class _SensSlider extends StatelessWidget {
   final ValueChanged<double> onChange;
   const _SensSlider({required this.value, required this.onChange});
 
-  double get _disp => 3.5 - value;
+  // 表示値：右端=高感度(0.5)、左端=低感度(8.0) になるよう反転
+  double get _disp => 8.5 - value;
 
   String get _label {
     if (value <= 0.8) return '最高感度';
-    if (value <= 1.2) return '高感度';
-    if (value <= 1.8) return '標準';
-    if (value <= 2.4) return '低感度';
+    if (value <= 1.5) return '高感度';
+    if (value <= 3.0) return '標準';
+    if (value <= 5.5) return '低感度';
     return '最低感度';
   }
 
@@ -401,8 +402,8 @@ class _SensSlider extends StatelessWidget {
         trackHeight: 6,
       ),
       child: Slider(
-        value: _disp, min: 0.5, max: 3.0, divisions: 25,
-        onChanged: (v) => onChange(3.5 - v),
+        value: _disp, min: 0.5, max: 8.0, divisions: 30,
+        onChanged: (v) => onChange(8.5 - v),
       ),
     ),
     Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -410,7 +411,7 @@ class _SensSlider extends StatelessWidget {
       Text('高感度', style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11)),
     ]),
     const SizedBox(height: 4),
-    Text('閾値: ${value.toStringAsFixed(1)} m/s²',
+    Text('閾値: ${value.toStringAsFixed(1)} m/s²  （高感度 0.5 〜 低感度 8.0）',
       style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11)),
   ]));
 }

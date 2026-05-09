@@ -61892,14 +61892,14 @@ $S:12}
 A.KI.prototype={
 gUX(){var s=this.c
 if(s<=0.8)return"\u6700\u9ad8\u611f\u5ea6"
-if(s<=1.2)return"\u9ad8\u611f\u5ea6"
-if(s<=1.8)return"\u6a19\u6e96"
-if(s<=2.4)return"\u4f4e\u611f\u5ea6"
+if(s<=1.5)return"\u9ad8\u611f\u5ea6"
+if(s<=3)return"\u6a19\u6e96"
+if(s<=5.5)return"\u4f4e\u611f\u5ea6"
 return"\u6700\u4f4e\u611f\u5ea6"},
 R(a){var s=null,r=t.D,q=A.cZ(A.c([A.fr(B.AL,B.h.ag(0.85),s,18),B.eT,A.c4("\u691c\u77e5\u611f\u5ea6",s,A.bN(s,s,B.h.ag(0.85),s,s,s,s,s,s,s,s,14,s,s,B.kA,s,s,!0,s,s,s,s,s,s,s,s),s)],r),B.F,s,B.D,B.L,0,s),p=B.h.ag(0.15),o=A.du(10),n=this.c
-return new A.kt(A.fS(A.c([A.cZ(A.c([q,A.eR(s,A.c4(this.gUX(),s,B.MO,s),B.E,s,s,new A.bU(p,s,s,o,s,s,B.V),s,s,s,B.kr,s,s,s)],r),B.F,s,B.bB,B.L,0,s),B.vy,new A.ve(A.aaY(s,B.a8,s,s,s,s,s,s,s,s,B.h.ag(0.2),s,s,s,B.a8.ag(0.2),s,s,s,s,s,s,s,s,B.h,s,B.fv,s,s,s,6,s,s,s,s,s,s),new A.vd(3.5-n,new A.a6G(this),0.5,3,25,s),s),A.cZ(A.c([A.c4("\u4f4e\u611f\u5ea6",s,A.bN(s,s,B.h.ag(0.6),s,s,s,s,s,s,s,s,11,s,s,s,s,s,!0,s,s,s,s,s,s,s,s),s),A.c4("\u9ad8\u611f\u5ea6",s,A.bN(s,s,B.h.ag(0.6),s,s,s,s,s,s,s,s,11,s,s,s,s,s,!0,s,s,s,s,s,s,s,s),s)],r),B.F,s,B.bB,B.L,0,s),B.vx,A.c4("\u95be\u5024: "+B.c.S(n,1)+" m/s\xb2",s,A.bN(s,s,B.h.ag(0.5),s,s,s,s,s,s,s,s,11,s,s,s,s,s,!0,s,s,s,s,s,s,s,s),s)],r),B.F,B.D),s)}}
+return new A.kt(A.fS(A.c([A.cZ(A.c([q,A.eR(s,A.c4(this.gUX(),s,B.MO,s),B.E,s,s,new A.bU(p,s,s,o,s,s,B.V),s,s,s,B.kr,s,s,s)],r),B.F,s,B.bB,B.L,0,s),B.vy,new A.ve(A.aaY(s,B.a8,s,s,s,s,s,s,s,s,B.h.ag(0.2),s,s,s,B.a8.ag(0.2),s,s,s,s,s,s,s,s,B.h,s,B.fv,s,s,s,6,s,s,s,s,s,s),new A.vd(8.5-n,new A.a6G(this),0.5,8,30,s),s),A.cZ(A.c([A.c4("\u4f4e\u611f\u5ea6",s,A.bN(s,s,B.h.ag(0.6),s,s,s,s,s,s,s,s,11,s,s,s,s,s,!0,s,s,s,s,s,s,s,s),s),A.c4("\u9ad8\u611f\u5ea6",s,A.bN(s,s,B.h.ag(0.6),s,s,s,s,s,s,s,s,11,s,s,s,s,s,!0,s,s,s,s,s,s,s,s),s)],r),B.F,s,B.bB,B.L,0,s),B.vx,A.c4("\u95be\u5024: "+B.c.S(n,1)+" m/s\xb2  \uff08\u9ad8\u611f\u5ea6 0.5 \u301c \u4f4e\u611f\u5ea6 8.0\uff09",s,A.bN(s,s,B.h.ag(0.5),s,s,s,s,s,s,s,s,11,s,s,s,s,s,!0,s,s,s,s,s,s,s,s),s)],r),B.F,B.D),s)}}
 A.a6G.prototype={
-$1(a){return this.a.d.$1(3.5-a)},
+$1(a){return this.a.d.$1(8.5-a)},
 $S:11}
 A.KJ.prototype={
 R(a){var s,r,q,p,o,n,m,l,k,j=null,i=this.c,h=i.d

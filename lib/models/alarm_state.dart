@@ -55,7 +55,7 @@ enum AlarmLevel {
 class AppState {
   final AlarmStatus status;
   final AlarmLevel level;
-  final double sensitivity;  // 0.5=高感度 〜 3.0=低感度
+  final double sensitivity;  // 0.5=高感度 〜 8.0=低感度
   final double currentDelta;
   final int selectedSound;   // 0〜4
 
